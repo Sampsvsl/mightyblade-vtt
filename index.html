@@ -327,7 +327,7 @@
       <input type="text" id="campaign-name" placeholder="Ex: As Sombras de Valdrak" />
     </div>
     <button class="btn-confirm" onclick="createTable()">✦ Criar Mesa</button>
-    <button class="btn-ghost"   onclick="onClickMestre()">← Voltar</button>
+    <button class="btn-ghost"   onclick="show('stage-landing')">← Voltar</button>
   </div>
 
   <!-- ══════════ TELA 4: GM — Dashboard ══════════ -->
@@ -815,7 +815,21 @@
   if (typeof firebase !== 'undefined') {
     firebase.auth().onAuthStateChanged(user => {
       GM_USER = user;
-      show('stage-landing');
+      if (user) {
+        // GM com sessão ativa → carrega mesa automaticamente do Firebase/localStorage
+        MBState.userTable.load(user.uid, tableData => {
+          GM_TABLE = tableData;
+          if (GM_TABLE) {
+            // Tem mesa salva → vai direto para escolha da mesa
+            renderGMChoice();
+            show('stage-gm-choice');
+          } else {
+            show('stage-landing');
+          }
+        });
+      } else {
+        show('stage-landing');
+      }
     });
   } else {
     show('stage-landing');

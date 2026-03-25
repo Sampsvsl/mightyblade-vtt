@@ -161,6 +161,28 @@ const MBState = {
 
     list() {
       return this._listIds().map(id => this.get(id));
+    },
+
+    // Carrega ficha direto do Firebase (sync entre dispositivos/sessões)
+    loadFromFirebase(code, charId, cb) {
+      if (!code || code === 'LOCAL') { cb(null); return; }
+      const r = _fbRef('mesas/' + code + '/chars/' + charId);
+      if (!r) { cb(null); return; }
+      r.once('value', snap => {
+        const data = snap.val();
+        if (data) {
+          const merged = { ...this.default(charId), ...data };
+          try { localStorage.setItem('mb_char_' + charId, JSON.stringify(merged)); } catch(e) {}
+          const ids = this._listIds();
+          if (!ids.includes(charId)) {
+            ids.push(charId);
+            try { localStorage.setItem('mb_char_ids', JSON.stringify(ids)); } catch(e) {}
+          }
+          cb(merged);
+        } else {
+          cb(null);
+        }
+      }).catch(() => cb(null));
     }
   },
 
@@ -435,15 +457,30 @@ MBState.userTable = {
 
   _ref(uid) { return _fbRef('usuarios/' + uid + '/mesa'); },
 
-  // Carrega mesa do GM do Firebase
+  // Carrega mesa do GM — Firebase primeiro, fallback localStorage
   load(uid, cb) {
+    const lsKey = 'mb_user_table_' + uid;
+    const localFallback = () => {
+      try { cb(JSON.parse(localStorage.getItem(lsKey) || 'null')); }
+      catch(e) { cb(null); }
+    };
     const r = this._ref(uid);
-    if (!r) { cb(null); return; }
-    r.once('value', snap => cb(snap.val())).catch(() => cb(null));
+    if (!r) { localFallback(); return; }
+    r.once('value', snap => {
+      const data = snap.val();
+      if (data) {
+        try { localStorage.setItem(lsKey, JSON.stringify(data)); } catch(e) {}
+        cb(data);
+      } else {
+        localFallback();
+      }
+    }).catch(() => localFallback());
   },
 
-  // Salva mesa no Firebase (usuarios/uid/mesa) e sincroniza /mesas/{code}/info
+  // Salva mesa no Firebase E em localStorage (backup local)
   save(uid, data) {
+    // Backup localStorage (garante persistência se Firebase falhar)
+    try { localStorage.setItem('mb_user_table_' + uid, JSON.stringify(data)); } catch(e) {}
     const r = this._ref(uid);
     if (r) r.set(data).catch(e => console.warn('[MB] userTable.save:', e));
     if (data && data.salaCode) {
@@ -492,5 +529,47 @@ MBState.userTable = {
     }
     const r = this._ref(uid);
     if (r) r.remove().catch(() => {});
+    try { localStorage.removeItem('mb_user_table_' + uid); } catch(e) {}
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   CHAR LIST — Lista de fichas por jogador (companions, animais, etc.)
+   Estrutura Firebase: /mesas/{code}/playerChars/{pid} = [ {id, label}, ... ]
+═══════════════════════════════════════════════════════════════ */
+MBState.charList = {
+
+  _fbPath(code, pid) { return 'mesas/' + code + '/playerChars/' + pid; },
+  _lsKey(code, pid)  { return 'mb_charlist_' + code + '_' + pid; },
+
+  getLocal(code, pid) {
+    try { return JSON.parse(localStorage.getItem(this._lsKey(code, pid)) || '[]'); }
+    catch(e) { return []; }
+  },
+
+  save(code, pid, list) {
+    try { localStorage.setItem(this._lsKey(code, pid), JSON.stringify(list)); } catch(e) {}
+    if (!code || code === 'LOCAL') return;
+    const r = _fbRef(this._fbPath(code, pid));
+    if (r) r.set(list).catch(e => console.warn('[MB] charList.save:', e));
+  },
+
+  // Carrega lista do Firebase com fallback para localStorage
+  loadFromFirebase(code, pid, cb) {
+    if (!code || code === 'LOCAL') { cb(this.getLocal(code, pid)); return; }
+    const r = _fbRef(this._fbPath(code, pid));
+    if (!r) { cb(this.getLocal(code, pid)); return; }
+    r.once('value', snap => {
+      const data = snap.val();
+      if (data) {
+        const list = Array.isArray(data)
+          ? data.filter(Boolean)
+          : Object.values(data).filter(Boolean);
+        try { localStorage.setItem(this._lsKey(code, pid), JSON.stringify(list)); } catch(e) {}
+        cb(list);
+      } else {
+        cb(this.getLocal(code, pid));
+      }
+    }).catch(() => cb(this.getLocal(code, pid)));
   }
 };

@@ -654,6 +654,40 @@ body { overflow: hidden; user-select: none; }
 .roll-mode-opt.desv { color: #e87070; }
 .roll-mode-opt.norm { color: var(--gold); }
 .roll-mode-opt.vant { color: var(--success, #5cb85c); }
+
+/* ── Fichas Switcher (múltiplas fichas / companions) ── */
+.fichas-switcher {
+  display: none;
+  align-items: center; gap: 3px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.55);
+  flex-shrink: 0; min-height: 32px;
+  padding: 2px 4px;
+}
+.fichas-tabs-row {
+  display: flex; flex: 1; overflow-x: auto; gap: 2px;
+  scrollbar-width: none; align-items: center;
+}
+.fichas-tabs-row::-webkit-scrollbar { display: none; }
+.ftab-ficha {
+  padding: 3px 9px; flex-shrink: 0;
+  background: transparent; border: 1px solid transparent;
+  border-radius: 2px; color: var(--dim);
+  font-family: 'Cinzel', serif; font-size: 0.55rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; transition: all 0.15s;
+  max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ftab-ficha:hover { color: var(--pale); border-color: var(--border); }
+.ftab-ficha.active { color: var(--gold); border-color: var(--ember); background: rgba(200,113,42,0.12); }
+.ftab-add-ficha {
+  width: 22px; height: 22px; flex-shrink: 0;
+  background: rgba(200,113,42,0.06); border: 1px dashed rgba(200,113,42,0.3);
+  border-radius: 2px; color: var(--dim); font-size: 0.9rem; line-height: 1;
+  cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.ftab-add-ficha:hover { color: var(--gold); border-color: var(--ember); background: rgba(200,113,42,0.15); }
 </style>
 </head>
 <body>
@@ -696,6 +730,12 @@ body { overflow: hidden; user-select: none; }
   <aside class="panel-left" id="panel-left">
     <!-- Collapse tab -->
     <div class="collapse-tab" onclick="togglePanel('left')" id="collapse-left" title="Recolher ficha">◀</div>
+
+    <!-- ── Fichas Switcher (companions, animal, etc.) ── -->
+    <div class="fichas-switcher" id="fichas-switcher">
+      <div class="fichas-tabs-row" id="fichas-tabs-row"></div>
+      <button class="ftab-add-ficha" onclick="addNewFicha()" title="Nova Ficha (Companion / Animal)">＋</button>
+    </div>
 
     <!-- Ficha Tabs -->
     <div class="ficha-tabs">
@@ -1138,6 +1178,10 @@ const MB_SUBS  = ['raca','cls','aprim','hab','mag','extra'];
 let XP_VAL = 0;
 let saveTimer = null;
 
+// Múltiplas fichas (companion, animal, etc.)
+let ALL_FICHAS  = []; // [ { id: string, label: string }, ... ]
+let FICHA_INDEX = 0;  // índice da ficha ativa
+
 // Cores disponíveis para tokens
 const TOKEN_COLORS = [
   '#c84040','#40a0c8','#50b850','#c8a040','#9040c8',
@@ -1154,11 +1198,9 @@ const TOKEN_COLORS = [
   const name   = params.get('name') || (role === 'gm' ? 'Mestre' : 'Jogador');
   const color  = params.get('color') || (role === 'gm' ? '#d4a843' : '#40a0c8');
 
-  SESSION = MBState.session.get();
-  if (!SESSION.code) {
-    SESSION = { code, role, name, color, campaign: 'Campanha' };
-    MBState.session.set(SESSION);
-  }
+  // Sempre reconstrói SESSION a partir dos params da URL
+  SESSION = { code, role, name, color, campaign: 'Campanha' };
+  MBState.session.set(SESSION);
 
   document.getElementById('camp-name').textContent = SESSION.campaign || code;
   document.getElementById('room-badge').textContent = 'SALA: ' + SESSION.code;
@@ -1166,40 +1208,69 @@ const TOKEN_COLORS = [
   rb.textContent = SESSION.role === 'gm' ? 'GM' : SESSION.name;
   if (SESSION.role !== 'gm') rb.classList.add('player');
 
-  // Carrega mapa e ficha
+  // Carrega mapa e iniciativa (sempre do localStorage — síncrono)
   MAP_DATA  = MBState.map.get(SESSION.code);
-  CHAR_ID   = 'char_' + (SESSION.role === 'player' ? SESSION.name.replace(/\s/g,'_') : 'gm');
-  CHAR_DATA = MBState.char.get(CHAR_ID);
   INIT_LIST = MBState.initiative.get(SESSION.code);
 
-  loadFicha();
-  renderGrid();
-  renderTokens();
-  renderInitList();
-  loadChatHistory();
-
-  // GM não tem ficha — esconde o painel esquerdo inteiro
+  // ── GM: sem ficha, inicializa tudo sincronamente ──
   if (SESSION.role === 'gm') {
-    const pl = document.getElementById('panel-left');
-    if (pl) pl.style.display = 'none';
-    const ct = document.getElementById('collapse-left');
-    if (ct) ct.style.display = 'none';
+    CHAR_ID   = 'char_gm';
+    CHAR_DATA = MBState.char.get(CHAR_ID);
+    finalizarInit(false);
+    return;
   }
 
-  setupFichaAutosave();
-  setupColorPicker();
+  // ── Jogador: carrega lista de fichas do Firebase (assíncrono) ──
+  const pid = SESSION.name.replace(/\s/g, '_');
+  CHAR_ID = 'char_' + pid;
 
-  // Aplica fog e grid
-  document.getElementById('fog-overlay').style.display = MAP_DATA.fogActive ? 'block' : 'none';
-  document.getElementById('btn-fog').classList.toggle('on', MAP_DATA.fogActive);
-  document.getElementById('btn-grid').classList.toggle('on', MAP_DATA.showGrid);
+  MBState.charList.loadFromFirebase(code, pid, fichasList => {
+    if (fichasList.length === 0) {
+      // Primeira vez: cria entrada inicial
+      ALL_FICHAS = [{ id: CHAR_ID, label: SESSION.name || 'Principal' }];
+      MBState.charList.save(code, pid, ALL_FICHAS);
+    } else {
+      ALL_FICHAS = fichasList;
+      CHAR_ID = ALL_FICHAS[0].id; // usa a ficha principal
+    }
 
-  // Pan inicial centrado
-  panOfsX = 0; panOfsY = 0;
-  applyPan();
+    // Tenta carregar dados da ficha do Firebase; fallback para localStorage
+    MBState.char.loadFromFirebase(code, CHAR_ID, fbData => {
+      CHAR_DATA = fbData || MBState.char.get(CHAR_ID);
+      finalizarInit(true);
+    });
+  });
 
-  updateMapInfo();
-  addSysMsg('⚔ Mesa carregada. Bem-vindo, ' + (SESSION.role==='gm'?'Mestre':SESSION.name) + '!');
+  function finalizarInit(isPlayer) {
+    loadFicha();
+    renderGrid();
+    renderTokens();
+    renderInitList();
+    loadChatHistory();
+
+    if (!isPlayer) {
+      // GM: esconde painel de ficha
+      const pl = document.getElementById('panel-left');
+      if (pl) pl.style.display = 'none';
+      const ct = document.getElementById('collapse-left');
+      if (ct) ct.style.display = 'none';
+    } else {
+      // Jogador: mostra switcher de fichas
+      renderFichasSwitcher();
+    }
+
+    setupFichaAutosave();
+    setupColorPicker();
+
+    document.getElementById('fog-overlay').style.display = MAP_DATA.fogActive ? 'block' : 'none';
+    document.getElementById('btn-fog').classList.toggle('on', MAP_DATA.fogActive);
+    document.getElementById('btn-grid').classList.toggle('on', MAP_DATA.showGrid);
+
+    panOfsX = 0; panOfsY = 0;
+    applyPan();
+    updateMapInfo();
+    addSysMsg('⚔ Mesa carregada. Bem-vindo, ' + (SESSION.role === 'gm' ? 'Mestre' : SESSION.name) + '!');
+  }
 })();
 
 /* ══════════════════════════════════════════════════════════════
@@ -2093,6 +2164,127 @@ function loadFicha() {
   (c.magias      || []).forEach(row => addMagRow(row));
   document.getElementById('equip-tbody').innerHTML = '';
   (c.equipamentos|| []).forEach(row => addEquipRow(row));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MÚLTIPLAS FICHAS — Companion / Animal Companheiro / Alter-ego
+══════════════════════════════════════════════════════════════ */
+
+/* Renderiza as tabs de fichas no switcher */
+function renderFichasSwitcher() {
+  const sw = document.getElementById('fichas-switcher');
+  if (!sw) return;
+  sw.style.display = 'flex';
+
+  const row = document.getElementById('fichas-tabs-row');
+  if (!row) return;
+  row.innerHTML = '';
+
+  ALL_FICHAS.forEach((ficha, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'ftab-ficha' + (i === FICHA_INDEX ? ' active' : '');
+    btn.textContent = ficha.label || ('Ficha ' + (i + 1));
+    btn.title = ficha.label + (i > 0 ? ' · Clique direito para opções' : ' (Principal)');
+    btn.onclick = () => switchFicha(i);
+    // Clique direito: opções de renomear/apagar (apenas fichas adicionais)
+    btn.oncontextmenu = (e) => { e.preventDefault(); showFichaCtxMenu(e, i); };
+    row.appendChild(btn);
+  });
+}
+
+/* Troca a ficha ativa */
+function switchFicha(index) {
+  if (index === FICHA_INDEX) return;
+  saveFicha(); // salva a ficha atual antes de trocar
+  FICHA_INDEX = index;
+  CHAR_ID = ALL_FICHAS[index].id;
+
+  // Tenta Firebase primeiro, cai para localStorage
+  MBState.char.loadFromFirebase(SESSION.code, CHAR_ID, fbData => {
+    CHAR_DATA = fbData || MBState.char.get(CHAR_ID);
+    loadFicha();
+    renderFichasSwitcher();
+    showToast('✦ Ficha: ' + (ALL_FICHAS[index].label || 'Ficha ' + (index + 1)));
+  });
+}
+
+/* Cria uma nova ficha (companion/animal) */
+function addNewFicha() {
+  const label = prompt('Nome da nova ficha\n(ex: Companion, Animal Companheiro, Alter-ego):', 'Companion');
+  if (!label || !label.trim()) return;
+
+  const pid       = SESSION.name.replace(/\s/g, '_');
+  const newCharId = 'char_' + pid + '_' + Date.now();
+  const newChar   = { ...MBState.char.default(newCharId), nome: label.trim(), id: newCharId };
+
+  MBState.char.save(newChar);
+  ALL_FICHAS.push({ id: newCharId, label: label.trim() });
+  MBState.charList.save(SESSION.code, pid, ALL_FICHAS);
+
+  FICHA_INDEX = ALL_FICHAS.length - 1;
+  CHAR_ID     = newCharId;
+  CHAR_DATA   = newChar;
+
+  loadFicha();
+  renderFichasSwitcher();
+  showToast('✦ Nova ficha criada: ' + label.trim());
+}
+
+/* Menu de contexto de uma ficha (renomear ou apagar) */
+function showFichaCtxMenu(e, index) {
+  const ficha = ALL_FICHAS[index];
+  const label = ficha.label || ('Ficha ' + (index + 1));
+
+  // Ficha principal: só permite renomear
+  if (index === 0) {
+    const novoNome = prompt('Renomear ficha principal:', label);
+    if (novoNome && novoNome.trim()) {
+      ALL_FICHAS[0].label = novoNome.trim();
+      MBState.charList.save(SESSION.code, SESSION.name.replace(/\s/g,'_'), ALL_FICHAS);
+      renderFichasSwitcher();
+    }
+    return;
+  }
+
+  // Fichas adicionais: renomear ou apagar
+  const acao = confirm(
+    '📋 Ficha: ' + label + '\n\n' +
+    'OK       → Renomear\n' +
+    'Cancelar → Apagar esta ficha'
+  );
+
+  if (acao) {
+    // Renomear
+    const novoNome = prompt('Novo nome para a ficha:', label);
+    if (novoNome && novoNome.trim()) {
+      ALL_FICHAS[index].label = novoNome.trim();
+      MBState.charList.save(SESSION.code, SESSION.name.replace(/\s/g,'_'), ALL_FICHAS);
+      renderFichasSwitcher();
+    }
+  } else {
+    // Apagar
+    if (!confirm('Apagar a ficha "' + label + '"?\nEsta ação não pode ser desfeita.')) return;
+
+    const pid    = SESSION.name.replace(/\s/g, '_');
+    const charId = ALL_FICHAS[index].id;
+
+    ALL_FICHAS.splice(index, 1);
+    MBState.charList.save(SESSION.code, pid, ALL_FICHAS);
+
+    // Remove do Firebase e localStorage
+    try {
+      firebase.database().ref('mesas/' + SESSION.code + '/chars/' + charId).remove().catch(() => {});
+    } catch(err) {}
+    try { localStorage.removeItem('mb_char_' + charId); } catch(err) {}
+
+    // Ajusta índice ativo
+    if (FICHA_INDEX >= ALL_FICHAS.length) FICHA_INDEX = ALL_FICHAS.length - 1;
+    CHAR_ID   = ALL_FICHAS[FICHA_INDEX].id;
+    CHAR_DATA = MBState.char.get(CHAR_ID);
+    loadFicha();
+    renderFichasSwitcher();
+    showToast('🗑 Ficha "' + label + '" removida.');
+  }
 }
 
 /* ── Barra de recursos ── */
