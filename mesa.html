@@ -688,6 +688,23 @@ body { overflow: hidden; user-select: none; }
   display: flex; align-items: center; justify-content: center;
 }
 .ftab-add-ficha:hover { color: var(--gold); border-color: var(--ember); background: rgba(200,113,42,0.15); }
+
+/* Wrapper para ficha tab + botão de deletar */
+.ftab-ficha-wrap {
+  display: flex; align-items: center; position: relative; flex-shrink: 0;
+}
+/* Botão ✕ para deletar fichas extras */
+.ftab-del {
+  width: 14px; height: 14px;
+  background: rgba(139,26,26,0.0); border: none;
+  border-radius: 2px; color: var(--dim);
+  font-size: 0.55rem; line-height: 1;
+  cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+  margin-left: -3px; padding: 0; flex-shrink: 0; opacity: 0.5;
+}
+.ftab-ficha-wrap:hover .ftab-del { opacity: 1; }
+.ftab-del:hover { color: #e87070; background: rgba(139,26,26,0.25); opacity: 1; }
 </style>
 </head>
 <body>
@@ -1224,22 +1241,42 @@ const TOKEN_COLORS = [
   const pid = SESSION.name.replace(/\s/g, '_');
   CHAR_ID = 'char_' + pid;
 
-  MBState.charList.loadFromFirebase(code, pid, fichasList => {
-    if (fichasList.length === 0) {
-      // Primeira vez: cria entrada inicial
-      ALL_FICHAS = [{ id: CHAR_ID, label: SESSION.name || 'Principal' }];
-      MBState.charList.save(code, pid, ALL_FICHAS);
-    } else {
-      ALL_FICHAS = fichasList;
-      CHAR_ID = ALL_FICHAS[0].id; // usa a ficha principal
-    }
+  function doPlayerLoad() {
+    MBState.charList.loadFromFirebase(code, pid, fichasList => {
+      if (fichasList.length === 0) {
+        // Primeira vez: cria entrada inicial
+        ALL_FICHAS = [{ id: CHAR_ID, label: SESSION.name || 'Principal' }];
+        MBState.charList.save(code, pid, ALL_FICHAS);
+      } else {
+        ALL_FICHAS = fichasList;
+        CHAR_ID = ALL_FICHAS[0].id; // usa a ficha principal
+      }
 
-    // Tenta carregar dados da ficha do Firebase; fallback para localStorage
-    MBState.char.loadFromFirebase(code, CHAR_ID, fbData => {
-      CHAR_DATA = fbData || MBState.char.get(CHAR_ID);
-      finalizarInit(true);
+      // Tenta carregar dados da ficha do Firebase; fallback para localStorage
+      MBState.char.loadFromFirebase(code, CHAR_ID, fbData => {
+        CHAR_DATA = fbData || MBState.char.get(CHAR_ID);
+        finalizarInit(true);
+      });
     });
-  });
+  }
+
+  // ⚠ CRÍTICO: espera Firebase Auth restaurar estado (async no reload de página)
+  // Se não aguardar, auth.currentUser === null e todas as escritas são bloqueadas pelas rules
+  if (typeof firebase !== 'undefined') {
+    const _unsub = firebase.auth().onAuthStateChanged(user => {
+      _unsub(); // dispara só uma vez
+      if (user) {
+        doPlayerLoad();
+      } else {
+        // Nenhum usuário → faz login anônimo e então carrega
+        firebase.auth().signInAnonymously()
+          .then(() => doPlayerLoad())
+          .catch(() => doPlayerLoad()); // mesmo se falhar, tenta (modo offline)
+      }
+    });
+  } else {
+    doPlayerLoad(); // Firebase não disponível — usa localStorage
+  }
 
   function finalizarInit(isPlayer) {
     loadFicha();
@@ -2181,15 +2218,55 @@ function renderFichasSwitcher() {
   row.innerHTML = '';
 
   ALL_FICHAS.forEach((ficha, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'ftab-ficha-wrap';
+
     const btn = document.createElement('button');
     btn.className = 'ftab-ficha' + (i === FICHA_INDEX ? ' active' : '');
     btn.textContent = ficha.label || ('Ficha ' + (i + 1));
-    btn.title = ficha.label + (i > 0 ? ' · Clique direito para opções' : ' (Principal)');
+    btn.title = ficha.label + (i > 0 ? ' · Clique direito para renomear' : ' (Principal)');
     btn.onclick = () => switchFicha(i);
-    // Clique direito: opções de renomear/apagar (apenas fichas adicionais)
     btn.oncontextmenu = (e) => { e.preventDefault(); showFichaCtxMenu(e, i); };
-    row.appendChild(btn);
+    wrap.appendChild(btn);
+
+    // Botão ✕ visível apenas para fichas extras (companions)
+    if (i > 0) {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'ftab-del';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Apagar ficha "' + (ficha.label || 'Ficha ' + (i + 1)) + '"';
+      delBtn.onclick = (e) => { e.stopPropagation(); deleteFicha(i); };
+      wrap.appendChild(delBtn);
+    }
+
+    row.appendChild(wrap);
   });
+}
+
+/* Apaga uma ficha extra (companion) pelo índice */
+function deleteFicha(index) {
+  if (index <= 0) return; // não permite apagar a ficha principal
+  const ficha = ALL_FICHAS[index];
+  const label = ficha.label || ('Ficha ' + (index + 1));
+  if (!confirm('Apagar a ficha "' + label + '"?\nEsta ação não pode ser desfeita.')) return;
+
+  const pid    = SESSION.name.replace(/\s/g, '_');
+  const charId = ficha.id;
+
+  ALL_FICHAS.splice(index, 1);
+  MBState.charList.save(SESSION.code, pid, ALL_FICHAS);
+
+  // Remove do Firebase e localStorage
+  try { firebase.database().ref('mesas/' + SESSION.code + '/chars/' + charId).remove().catch(() => {}); } catch(err) {}
+  try { localStorage.removeItem('mb_char_' + charId); } catch(err) {}
+
+  // Ajusta índice ativo
+  if (FICHA_INDEX >= ALL_FICHAS.length) FICHA_INDEX = ALL_FICHAS.length - 1;
+  CHAR_ID   = ALL_FICHAS[FICHA_INDEX].id;
+  CHAR_DATA = MBState.char.get(CHAR_ID);
+  loadFicha();
+  renderFichasSwitcher();
+  showToast('🗑 Ficha "' + label + '" removida.');
 }
 
 /* Troca a ficha ativa */
@@ -2230,60 +2307,17 @@ function addNewFicha() {
   showToast('✦ Nova ficha criada: ' + label.trim());
 }
 
-/* Menu de contexto de uma ficha (renomear ou apagar) */
+/* Menu de contexto de uma ficha (clique direito → renomear) */
 function showFichaCtxMenu(e, index) {
   const ficha = ALL_FICHAS[index];
   const label = ficha.label || ('Ficha ' + (index + 1));
+  const pid   = SESSION.name.replace(/\s/g, '_');
 
-  // Ficha principal: só permite renomear
-  if (index === 0) {
-    const novoNome = prompt('Renomear ficha principal:', label);
-    if (novoNome && novoNome.trim()) {
-      ALL_FICHAS[0].label = novoNome.trim();
-      MBState.charList.save(SESSION.code, SESSION.name.replace(/\s/g,'_'), ALL_FICHAS);
-      renderFichasSwitcher();
-    }
-    return;
-  }
-
-  // Fichas adicionais: renomear ou apagar
-  const acao = confirm(
-    '📋 Ficha: ' + label + '\n\n' +
-    'OK       → Renomear\n' +
-    'Cancelar → Apagar esta ficha'
-  );
-
-  if (acao) {
-    // Renomear
-    const novoNome = prompt('Novo nome para a ficha:', label);
-    if (novoNome && novoNome.trim()) {
-      ALL_FICHAS[index].label = novoNome.trim();
-      MBState.charList.save(SESSION.code, SESSION.name.replace(/\s/g,'_'), ALL_FICHAS);
-      renderFichasSwitcher();
-    }
-  } else {
-    // Apagar
-    if (!confirm('Apagar a ficha "' + label + '"?\nEsta ação não pode ser desfeita.')) return;
-
-    const pid    = SESSION.name.replace(/\s/g, '_');
-    const charId = ALL_FICHAS[index].id;
-
-    ALL_FICHAS.splice(index, 1);
+  const novoNome = prompt('Renomear ficha:', label);
+  if (novoNome && novoNome.trim()) {
+    ALL_FICHAS[index].label = novoNome.trim();
     MBState.charList.save(SESSION.code, pid, ALL_FICHAS);
-
-    // Remove do Firebase e localStorage
-    try {
-      firebase.database().ref('mesas/' + SESSION.code + '/chars/' + charId).remove().catch(() => {});
-    } catch(err) {}
-    try { localStorage.removeItem('mb_char_' + charId); } catch(err) {}
-
-    // Ajusta índice ativo
-    if (FICHA_INDEX >= ALL_FICHAS.length) FICHA_INDEX = ALL_FICHAS.length - 1;
-    CHAR_ID   = ALL_FICHAS[FICHA_INDEX].id;
-    CHAR_DATA = MBState.char.get(CHAR_ID);
-    loadFicha();
     renderFichasSwitcher();
-    showToast('🗑 Ficha "' + label + '" removida.');
   }
 }
 
