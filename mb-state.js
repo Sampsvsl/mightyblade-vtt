@@ -458,31 +458,39 @@ MBState.userTable = {
   _ref(uid) { return _fbRef('usuarios/' + uid + '/mesa'); },
 
   // Carrega mesa do GM — Firebase primeiro, fallback localStorage
+  // cb(data, fromFirebase) — fromFirebase=false indica que veio só do localStorage
   load(uid, cb) {
     const lsKey = 'mb_user_table_' + uid;
-    const localFallback = () => {
-      try { cb(JSON.parse(localStorage.getItem(lsKey) || 'null')); }
-      catch(e) { cb(null); }
+    const localFallback = (permissionDenied) => {
+      if (permissionDenied) console.warn('[MB] Firebase PERMISSION_DENIED — verifique as regras do Realtime Database.');
+      try { cb(JSON.parse(localStorage.getItem(lsKey) || 'null'), false); }
+      catch(e) { cb(null, false); }
     };
     const r = this._ref(uid);
-    if (!r) { localFallback(); return; }
+    if (!r) { localFallback(false); return; }
     r.once('value', snap => {
       const data = snap.val();
       if (data) {
         try { localStorage.setItem(lsKey, JSON.stringify(data)); } catch(e) {}
-        cb(data);
+        cb(data, true); // veio do Firebase ✓
       } else {
-        localFallback();
+        localFallback(false);
       }
-    }).catch(() => localFallback());
+    }).catch(e => localFallback(e && e.code === 'PERMISSION_DENIED'));
   },
 
   // Salva mesa no Firebase E em localStorage (backup local)
+  // Retorna Promise para que o chamador possa reagir a erros
   save(uid, data) {
     // Backup localStorage (garante persistência se Firebase falhar)
     try { localStorage.setItem('mb_user_table_' + uid, JSON.stringify(data)); } catch(e) {}
     const r = this._ref(uid);
-    if (r) r.set(data).catch(e => console.warn('[MB] userTable.save:', e));
+    const fbPromise = r
+      ? r.set(data).catch(e => {
+          console.warn('[MB] userTable.save error:', e.code || e.message);
+          return Promise.reject(e); // propaga para o chamador
+        })
+      : Promise.reject(new Error('Firebase não disponível'));
     if (data && data.salaCode) {
       const mr = _fbRef('mesas/' + data.salaCode + '/info');
       if (mr) mr.set({
@@ -492,14 +500,15 @@ MBState.userTable = {
         ownerUid: uid
       }).catch(e => console.warn('[MB] mesas sync:', e));
     }
+    return fbPromise;
   },
 
-  // Cria nova mesa e persiste
+  // Cria nova mesa e persiste; retorna { table, fbPromise }
   create(uid, name) {
     const salaCode = MBState.table._genCode();
     const d = { name: name || 'Mesa', createdAt: Date.now(), players: [], salaCode, ownerUid: uid };
-    this.save(uid, d);
-    return d;
+    const fbPromise = this.save(uid, d);
+    return { table: d, fbPromise };
   },
 
   // Adiciona jogador e persiste

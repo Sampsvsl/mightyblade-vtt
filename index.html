@@ -596,9 +596,23 @@
     const name = document.getElementById('campaign-name').value.trim();
     if (!name) { showToast('✦ Nomeie sua campanha.'); return; }
     if (!GM_USER) { openAuthModal(); return; }
-    GM_TABLE = MBState.userTable.create(GM_USER.uid, name);
+
+    const { table, fbPromise } = MBState.userTable.create(GM_USER.uid, name);
+    GM_TABLE = table;
     show('stage-dashboard');
-    showToast('✦ Mesa criada! Compartilhe o código com os jogadores.');
+
+    // Verifica se o Firebase aceitou o save
+    fbPromise
+      .then(() => showToast('✦ Mesa criada e salva na nuvem! Compartilhe o código.'))
+      .catch(e => {
+        const isPermission = e && (e.code === 'PERMISSION_DENIED' || String(e.message).includes('PERMISSION_DENIED'));
+        if (isPermission) {
+          showToast('⚠ AVISO: Firebase negou a escrita! Corrija as regras do Realtime Database.');
+          console.error('[MB] Corrija as regras do Firebase Realtime Database. Veja o README.');
+        } else {
+          showToast('✦ Mesa criada (salva localmente — sem conexão com Firebase).');
+        }
+      });
   }
 
   function enterAsGM() {
@@ -817,10 +831,13 @@
       GM_USER = user;
       if (user) {
         // GM com sessão ativa → carrega mesa automaticamente do Firebase/localStorage
-        MBState.userTable.load(user.uid, tableData => {
+        MBState.userTable.load(user.uid, (tableData, fromFirebase) => {
           GM_TABLE = tableData;
           if (GM_TABLE) {
-            // Tem mesa salva → vai direto para escolha da mesa
+            if (!fromFirebase) {
+              // Mesa veio só do localStorage (Firebase inacessível neste dispositivo)
+              setTimeout(() => showToast('⚠ Mesa carregada localmente. Firebase não acessível — verifique as regras do Realtime Database.'), 800);
+            }
             renderGMChoice();
             show('stage-gm-choice');
           } else {
