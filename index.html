@@ -266,6 +266,22 @@
     background:rgba(212,168,67,0.06); border:1px solid rgba(212,168,67,0.15); border-radius:2px;
   }
   .gm-user-email { flex:1; font-family:'Cinzel',serif; font-size:0.58rem; letter-spacing:0.14em; color:var(--dim); }
+
+  /* ── Campos do modal auth (email + password) ── */
+  #modal-auth .field-group { text-align: center; }
+  #modal-auth input[type="email"],
+  #modal-auth input[type="password"] {
+    width: 100%; box-sizing: border-box;
+    background: rgba(0,0,0,0.4); border: 1px solid rgba(200,113,42,0.2);
+    border-radius: 2px; padding: 9px 12px;
+    color: var(--pale); font-family: 'EB Garamond', serif; font-size: 1rem;
+    outline: none; transition: border-color 0.2s;
+    text-align: center;
+  }
+  #modal-auth input[type="email"]::placeholder,
+  #modal-auth input[type="password"]::placeholder { color: rgba(138,122,101,0.5); font-style: italic; }
+  #modal-auth input[type="email"]:focus,
+  #modal-auth input[type="password"]:focus { border-color: rgba(200,113,42,0.55); }
 </style>
 </head>
 <body oncontextmenu="return false">
