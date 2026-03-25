@@ -724,23 +724,47 @@
     const code = document.getElementById('join-code').value.trim().toUpperCase();
     if (!code) { showToast('✦ Insira o código da sala.'); return; }
 
-    const db = (typeof firebase !== 'undefined') ? firebase.database() : null;
-    if (!db) {
-      showToast('⚠ Firebase não conectado. Tente novamente.');
-      return;
-    }
+    const db   = (typeof firebase !== 'undefined') ? firebase.database()  : null;
+    const auth = (typeof firebase !== 'undefined') ? firebase.auth()       : null;
+    if (!db) { showToast('⚠ Firebase não conectado. Tente novamente.'); return; }
 
-    showToast('Buscando sala...');
-    db.ref('mesas/' + code + '/info').once('value', snap => {
-      const info = snap.val();
-      if (!info) {
-        showToast('✦ Sala não encontrada. Verifique o código.');
-        return;
-      }
-      currentSalaCode = code;
-      renderPlayerSelect(info, code);
-      show('stage-player-select');
-    });
+    showToast('🔎 Buscando sala...');
+
+    // Executa a busca depois de garantir autenticação (anônima ou GM)
+    const doSearch = () => {
+      db.ref('mesas/' + code + '/info').once('value')
+        .then(snap => {
+          const info = snap.val();
+          if (!info) {
+            showToast('✦ Sala não encontrada. Verifique o código.');
+            return;
+          }
+          currentSalaCode = code;
+          renderPlayerSelect(info, code);
+          show('stage-player-select');
+        })
+        .catch(err => {
+          console.error('[MB] buscarSala:', err);
+          if (err && (err.code === 'PERMISSION_DENIED' || String(err.message).includes('PERMISSION_DENIED'))) {
+            showToast('⚠ Acesso negado. Verifique as regras do Firebase Realtime Database.');
+          } else {
+            showToast('⚠ Erro ao buscar sala. Verifique sua conexão e tente novamente.');
+          }
+        });
+    };
+
+    // Jogadores não têm conta — usa autenticação anônima do Firebase
+    if (auth && !auth.currentUser) {
+      auth.signInAnonymously()
+        .then(doSearch)
+        .catch(anonErr => {
+          // Auth anônima não está habilitada → tenta assim mesmo
+          console.warn('[MB] Auth anônima indisponível (' + anonErr.code + '). Tentando busca sem auth...');
+          doSearch();
+        });
+    } else {
+      doSearch();
+    }
   }
 
   /* Passo 2: exibe lista de personagens pré-definidos */
