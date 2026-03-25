@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesa Virtual — Lobby</title>
+<link rel="stylesheet" href="mb-shared.css">
+<style>
+  body { overflow: hidden; }
+
+  .stage {
+    position: relative; z-index: 10;
+    height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+
+  /* ── Logo ── */
+  .logo-wrap { text-align: center; margin-bottom: 26px; animation: fadeDown 0.9s ease both; }
+  .logo-title {
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: clamp(1.8rem, 5vw, 2.6rem);
+    font-weight: 700; letter-spacing: 0.12em; color: var(--gold);
+    text-shadow: 0 0 30px rgba(212,168,67,0.5), 0 2px 4px rgba(0,0,0,0.8);
+    line-height: 1;
+  }
+
+  /* ── Painel ── */
+  .panel {
+    background: linear-gradient(160deg, rgba(28,23,18,0.97) 0%, rgba(17,14,10,0.99) 100%);
+    border: 1px solid rgba(200,113,42,0.25); border-radius: 2px;
+    padding: 30px 36px; width: 100%; max-width: 520px; position: relative;
+    box-shadow: 0 0 0 1px rgba(200,113,42,0.07), 0 20px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(212,168,67,0.08);
+    animation: fadeUp 1s ease both 0.2s;
+  }
+  .panel::before { content:'✦'; position:absolute; top:8px; left:12px; font-size:10px; color:var(--ember); opacity:0.5; }
+  .panel::after  { content:'✦'; position:absolute; bottom:8px; right:12px; font-size:10px; color:var(--ember); opacity:0.5; }
+
+  /* ── Títulos ── */
+  .panel-title {
+    font-family: 'Cinzel', serif; font-size: 1.4rem; letter-spacing: 0.1em;
+    color: var(--gold); margin-bottom: 8px; text-align: center;
+  }
+  .panel-sub {
+    font-family: 'Cinzel', serif; font-size: 0.65rem; letter-spacing: 0.22em;
+    color: var(--dim); text-align: center; margin-bottom: 22px; text-transform: uppercase;
+  }
+
+  /* ── Botões ── */
+  .btn-gm {
+    width: 100%; padding: 13px 20px; margin-bottom: 10px;
+    background: linear-gradient(135deg, rgba(200,113,42,0.25), rgba(139,26,26,0.15));
+    border: 1px solid rgba(200,113,42,0.4); border-radius: 2px;
+    color: var(--gold); font-family: 'Cinzel', serif;
+    font-size: 0.85rem; letter-spacing: 0.15em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-gm:hover { background: rgba(200,113,42,0.35); border-color: var(--ember); box-shadow: 0 0 16px rgba(200,113,42,0.2); }
+
+  .btn-player {
+    width: 100%; padding: 13px 20px; margin-bottom: 10px;
+    background: linear-gradient(135deg, rgba(58,122,170,0.2), rgba(30,70,110,0.15));
+    border: 1px solid rgba(58,122,170,0.4); border-radius: 2px;
+    color: #7ab4d4; font-family: 'Cinzel', serif;
+    font-size: 0.85rem; letter-spacing: 0.15em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-player:hover { background: rgba(58,122,170,0.3); border-color: #7ab4d4; box-shadow: 0 0 16px rgba(58,122,170,0.2); }
+
+  .btn-confirm {
+    width: 100%; padding: 11px 20px; margin-top: 6px;
+    background: linear-gradient(135deg, rgba(80,184,80,0.2), rgba(40,100,40,0.15));
+    border: 1px solid rgba(80,184,80,0.4); border-radius: 2px;
+    color: #90c090; font-family: 'Cinzel', serif;
+    font-size: 0.8rem; letter-spacing: 0.2em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-confirm:hover { background: rgba(80,184,80,0.3); border-color: rgba(80,184,80,0.5); }
+
+  .btn-danger {
+    width: 100%; padding: 9px 20px; margin-top: 6px;
+    background: rgba(139,26,26,0.15); border: 1px solid rgba(139,26,26,0.35);
+    border-radius: 2px; color: #c84040;
+    font-family: 'Cinzel', serif; font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-danger:hover { background: rgba(139,26,26,0.3); border-color: rgba(139,26,26,0.6); }
+
+  .btn-ghost {
+    width: 100%; padding: 8px 20px; margin-top: 8px;
+    background: transparent; border: 1px solid rgba(200,113,42,0.18);
+    border-radius: 2px; color: var(--dim);
+    font-family: 'Cinzel', serif; font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-ghost:hover { color: var(--pale); border-color: var(--border-h); }
+
+  .btn-add-player {
+    width: 100%; padding: 8px 20px; margin-bottom: 10px;
+    background: rgba(80,184,80,0.1); border: 1px solid rgba(80,184,80,0.3);
+    border-radius: 2px; color: #90c090;
+    font-family: 'Cinzel', serif; font-size: 0.7rem; letter-spacing: 0.15em;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-add-player:hover { background: rgba(80,184,80,0.2); }
+
+  /* ── Campos ── */
+  .field-group { margin-bottom: 13px; }
+  label {
+    display: block; font-family: 'Cinzel', serif;
+    font-size: 0.6rem; letter-spacing: 0.25em; text-transform: uppercase;
+    color: var(--dim); margin-bottom: 5px;
+  }
+  input[type="text"] {
+    width: 100%; background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(200,113,42,0.2); border-radius: 2px;
+    padding: 9px 12px; color: var(--pale);
+    font-family: 'EB Garamond', serif; font-size: 1rem;
+    outline: none; transition: border-color 0.2s; box-sizing: border-box;
+  }
+  input::placeholder { color: rgba(138,122,101,0.5); font-style: italic; }
+  input:focus { border-color: rgba(200,113,42,0.55); box-shadow: 0 0 0 2px rgba(200,113,42,0.07); }
+
+  /* ── Color picker ── */
+  .color-picker-row { display: grid; grid-template-columns: repeat(5,1fr); gap: 7px; }
+  .color-option {
+    width: 100%; aspect-ratio: 1;
+    border: 2px solid rgba(200,113,42,0.2); border-radius: 2px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .color-option:hover  { border-color: rgba(200,113,42,0.6); }
+  .color-option.selected { border-color: var(--gold); box-shadow: 0 0 10px rgba(212,168,67,0.5); }
+
+  /* ── Código da sala ── */
+  .room-code-wrap { text-align: center; margin-bottom: 20px; }
+  .room-code-label {
+    font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.28em;
+    color: var(--dim); text-transform: uppercase; margin-bottom: 8px;
+  }
+  .room-code {
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: 1.9rem; letter-spacing: 0.25em; color: var(--gold);
+    text-shadow: 0 0 24px rgba(212,168,67,0.4);
+    padding: 10px 20px;
+    background: rgba(0,0,0,0.4); border: 1px solid rgba(212,168,67,0.25);
+    border-radius: 2px; display: inline-block; margin-bottom: 7px;
+    cursor: pointer; transition: all 0.2s; user-select: all;
+  }
+  .room-code:hover { border-color: var(--gold); box-shadow: 0 0 20px rgba(212,168,67,0.2); }
+  .copy-hint { font-family:'Cinzel',serif; font-size:0.55rem; letter-spacing:0.2em; color:var(--dim); text-transform:uppercase; }
+
+  /* ── Section header ── */
+  .sec-header {
+    font-family: 'Cinzel', serif; font-size: 0.68rem; letter-spacing: 0.28em;
+    color: var(--dim); text-align: center; margin: 16px 0 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sec-header::before, .sec-header::after { content:'──'; flex:1; }
+
+  /* ── Lista de jogadores ── */
+  .player-list { max-height: 190px; overflow-y: auto; margin-bottom: 12px; }
+  .player-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 4px; border-bottom: 1px solid rgba(200,113,42,0.12);
+    transition: background 0.15s;
+  }
+  .player-row:last-child { border-bottom: none; }
+  .player-dot { width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(212,168,67,0.3); flex-shrink: 0; }
+  .player-name-txt { flex: 1; color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.95rem; }
+  .btn-sm {
+    padding: 4px 8px; font-size: 0.6rem; background: transparent;
+    border: 1px solid rgba(200,113,42,0.22); border-radius: 2px;
+    color: var(--dim); font-family: 'Cinzel', serif; cursor: pointer; transition: all 0.12s;
+  }
+  .btn-sm:hover { color: var(--pale); border-color: var(--border-h); }
+  .btn-sm.rm { color: #c84040; border-color: rgba(200,64,64,0.3); }
+  .btn-sm.rm:hover { background: rgba(200,64,64,0.1); }
+
+  /* ── Seleção de player (tela do jogador) ── */
+  .player-select-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; margin-bottom: 6px;
+    border: 1px solid rgba(200,113,42,0.2); border-radius: 2px;
+    cursor: pointer; transition: all 0.15s; background: rgba(0,0,0,0.2);
+  }
+  .player-select-row:hover { background: rgba(200,113,42,0.1); border-color: rgba(200,113,42,0.5); }
+  .player-select-row .pname { flex:1; color: var(--pale); font-family:'EB Garamond', serif; font-size: 1rem; }
+  .player-select-row .penter { font-family:'Cinzel', serif; font-size:0.6rem; color:var(--dim); letter-spacing:0.15em; }
+
+  /* ── Mesa existente ── */
+  .existing-mesa {
+    padding: 12px 16px; margin-bottom: 14px;
+    background: rgba(212,168,67,0.06); border: 1px solid rgba(212,168,67,0.2);
+    border-radius: 2px;
+  }
+  .existing-mesa .em-name { font-family:'Cinzel',serif; font-size:1rem; color:var(--gold); margin-bottom:3px; }
+  .existing-mesa .em-code { font-family:'Cinzel',serif; font-size:0.62rem; color:var(--dim); letter-spacing:0.2em; }
+
+  /* ── Configurações / zona de perigo ── */
+  .danger-zone {
+    margin-top: 18px; padding: 12px 16px;
+    border: 1px solid rgba(139,26,26,0.3); border-radius: 2px;
+    background: rgba(139,26,26,0.06);
+  }
+  .danger-label {
+    font-family:'Cinzel',serif; font-size:0.58rem; letter-spacing:0.3em;
+    color: #c84040; text-transform: uppercase; margin-bottom: 8px;
+  }
+
+  /* ── Empty state ── */
+  .empty-state { text-align:center; padding:14px 0; color:var(--dim); font-style:italic; font-size:0.85rem; }
+
+  /* ── Footer ── */
+  .footer-text { text-align:center; font-size:0.7rem; color:var(--dim); margin-top:14px; letter-spacing:0.1em; }
+  .version {
+    position:fixed; bottom:12px; right:18px;
+    font-family:'Cinzel',serif; font-size:0.52rem;
+    letter-spacing:0.2em; color:rgba(138,122,101,0.28); z-index:20;
+  }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+    background:rgba(0,0,0,0.82); z-index:300;
+    align-items:center; justify-content:center;
+  }
+  .modal-overlay.show { display:flex; }
+  .modal-card {
+    background: linear-gradient(160deg,rgba(28,23,18,0.99) 0%,rgba(17,14,10,1) 100%);
+    border:1px solid rgba(200,113,42,0.3); border-radius:2px;
+    padding:26px 30px; max-width:380px; width:90%;
+    box-shadow:0 20px 60px rgba(0,0,0,0.9);
+    animation:fadeUp 0.3s ease;
+  }
+  .modal-title { font-family:'Cinzel',serif; font-size:1rem; color:var(--gold); margin-bottom:16px; text-align:center; }
+  .modal-btns  { display:flex; gap:10px; margin-top:14px; }
+  .modal-btn {
+    flex:1; padding:9px; background:transparent;
+    border:1px solid rgba(200,113,42,0.3); border-radius:2px;
+    color:var(--dim); font-family:'Cinzel',serif; font-size:0.7rem;
+    letter-spacing:0.15em; cursor:pointer; transition:all 0.15s;
+  }
+  .modal-btn:hover { color:var(--pale); border-color:var(--border-h); }
+  .modal-btn.ok { background:rgba(80,184,80,0.15); border-color:rgba(80,184,80,0.4); color:#90c090; }
+  .modal-btn.ok:hover { background:rgba(80,184,80,0.25); }
+
+  @keyframes fadeDown { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes fadeUp   { from{opacity:0;transform:translateY(20px)}  to{opacity:1;transform:translateY(0)} }
+
+  /* ── Auth Modal ── */
+  .auth-toggle { display:flex; gap:8px; margin-bottom:16px; }
+  .auth-toggle button {
+    flex:1; padding:8px; background:transparent; border:1px solid var(--border);
+    border-radius:2px; color:var(--dim); font-family:'Cinzel',serif;
+    font-size:0.65rem; letter-spacing:0.15em; cursor:pointer; transition:all 0.15s;
+  }
+  .auth-toggle button.active { color:var(--gold); border-color:var(--ember); background:rgba(200,113,42,0.12); }
+  .auth-error {
+    color:#e87070; font-family:'Cinzel',serif; font-size:0.65rem;
+    letter-spacing:0.1em; text-align:center; margin:8px 0; min-height:18px;
+  }
+  /* ── Dashboard: user bar ── */
+  .gm-user-bar {
+    display:flex; align-items:center; gap:8px; padding:8px 12px; margin-bottom:12px;
+    background:rgba(212,168,67,0.06); border:1px solid rgba(212,168,67,0.15); border-radius:2px;
+  }
+  .gm-user-email { flex:1; font-family:'Cinzel',serif; font-size:0.58rem; letter-spacing:0.14em; color:var(--dim); }
+</style>
+</head>
+<body oncontextmenu="return false">
+
+<div class="bg"></div>
+<div class="rune-top"></div><div class="rune-bottom"></div>
+<div class="rune-left"></div><div class="rune-right"></div>
+<div class="torch torch-tl"><div class="torch-glow"></div><svg viewBox="0 0 32 40"><rect x="13" y="22" width="6" height="18" fill="#5c3010" rx="1"/><ellipse cx="16" cy="20" rx="5" ry="3" fill="#8b4513"/><g class="flame"><ellipse cx="16" cy="13" rx="5" ry="8" fill="#e87020" opacity="0.9"/><ellipse cx="16" cy="10" rx="3.5" ry="6" fill="#f5a020" opacity="0.8"/><ellipse cx="16" cy="7" rx="2" ry="4" fill="#ffd060" opacity="0.9"/></g></svg></div>
+<div class="torch torch-tr"><div class="torch-glow"></div><svg viewBox="0 0 32 40"><rect x="13" y="22" width="6" height="18" fill="#5c3010" rx="1"/><ellipse cx="16" cy="20" rx="5" ry="3" fill="#8b4513"/><g class="flame"><ellipse cx="16" cy="13" rx="5" ry="8" fill="#e87020" opacity="0.9"/><ellipse cx="16" cy="10" rx="3.5" ry="6" fill="#f5a020" opacity="0.8"/><ellipse cx="16" cy="7" rx="2" ry="4" fill="#ffd060" opacity="0.9"/></g></svg></div>
+<div class="torch torch-bl"><div class="torch-glow"></div><svg viewBox="0 0 32 40"><rect x="13" y="22" width="6" height="18" fill="#5c3010" rx="1"/><ellipse cx="16" cy="20" rx="5" ry="3" fill="#8b4513"/><g class="flame"><ellipse cx="16" cy="13" rx="5" ry="8" fill="#e87020" opacity="0.9"/><ellipse cx="16" cy="10" rx="3.5" ry="6" fill="#f5a020" opacity="0.8"/><ellipse cx="16" cy="7" rx="2" ry="4" fill="#ffd060" opacity="0.9"/></g></svg></div>
+<div class="torch torch-br"><div class="torch-glow"></div><svg viewBox="0 0 32 40"><rect x="13" y="22" width="6" height="18" fill="#5c3010" rx="1"/><ellipse cx="16" cy="20" rx="5" ry="3" fill="#8b4513"/><g class="flame"><ellipse cx="16" cy="13" rx="5" ry="8" fill="#e87020" opacity="0.9"/><ellipse cx="16" cy="10" rx="3.5" ry="6" fill="#f5a020" opacity="0.8"/><ellipse cx="16" cy="7" rx="2" ry="4" fill="#ffd060" opacity="0.9"/></g></svg></div>
+<div class="particles" id="particles"></div>
+
+<div class="stage">
+  <div class="logo-wrap"><h1 class="logo-title">⚔ Mesa Virtual</h1></div>
+
+  <!-- ══════════ TELA 0: Loading ══════════ -->
+  <div id="stage-loading" class="panel" style="display:none; text-align:center;">
+    <div style="color:var(--dim);font-family:'Cinzel',serif;font-size:0.72rem;letter-spacing:0.22em;padding:18px 0;">✦ Verificando sessão…</div>
+  </div>
+
+  <!-- ══════════ TELA 1: Landing ══════════ -->
+  <div id="stage-landing" class="panel" style="display:none;">
+    <p class="panel-sub">Quem é você nesta sessão?</p>
+    <button class="btn-gm"     onclick="onClickMestre()">⚔ Sou o Mestre</button>
+    <button class="btn-player" onclick="show('stage-player-code')">🎲 Sou Jogador</button>
+  </div>
+
+  <!-- ══════════ TELA 2: GM — Escolha (mesa existente) ══════════ -->
+  <div id="stage-gm-choice" class="panel" style="display:none;">
+    <p class="panel-sub">O que deseja fazer?</p>
+    <div class="existing-mesa" id="existing-mesa-info"></div>
+    <button class="btn-gm"    onclick="show('stage-dashboard')">⚔ Entrar na Mesa Existente</button>
+    <button class="btn-ghost" onclick="show('stage-create')">＋ Criar Nova Mesa</button>
+    <button class="btn-ghost" onclick="show('stage-landing')">← Voltar</button>
+  </div>
+
+  <!-- ══════════ TELA 3: GM — Criar Mesa ══════════ -->
+  <div id="stage-create" class="panel" style="display:none;">
+    <div class="panel-title">Nova Mesa</div>
+    <div class="field-group">
+      <label>Nome da Campanha</label>
+      <input type="text" id="campaign-name" placeholder="Ex: As Sombras de Valdrak" />
+    </div>
+    <button class="btn-confirm" onclick="createTable()">✦ Criar Mesa</button>
+    <button class="btn-ghost"   onclick="onClickMestre()">← Voltar</button>
+  </div>
+
+  <!-- ══════════ TELA 4: GM — Dashboard ══════════ -->
+  <div id="stage-dashboard" class="panel" style="display:none; max-width:560px;">
+    <div class="panel-title" id="dash-title">Mesa</div>
+
+    <div class="room-code-wrap">
+      <div class="room-code-label">Código da Sala — compartilhe com os jogadores</div>
+      <div class="room-code" id="room-code-display" onclick="copyCode()" title="Clique para copiar">——</div>
+      <div class="copy-hint">clique no código para copiar</div>
+    </div>
+
+    <!-- Barra do usuário logado -->
+    <div class="gm-user-bar" id="gm-user-bar">
+      <span class="gm-user-email" id="gm-user-email">—</span>
+      <button class="btn-sm" onclick="signOutGM()">Sair ↗</button>
+    </div>
+    <button class="btn-gm" onclick="enterAsGM()">⚔ Entrar como Mestre</button>
+
+    <div class="sec-header">Jogadores</div>
+    <div class="player-list" id="player-list"></div>
+    <button class="btn-add-player" onclick="openAddModal()">＋ Adicionar Jogador</button>
+
+    <!-- Zona de perigo (encerrar mesa) -->
+    <div class="danger-zone">
+      <div class="danger-label">⚠ Zona de Perigo</div>
+      <button class="btn-danger" onclick="confirmReset()">🗑 Encerrar e Apagar Mesa</button>
+    </div>
+
+    <p class="footer-text">Mesa online · Firebase sincronizado em tempo real</p>
+  </div>
+
+  <!-- ══════════ TELA 5: Jogador — Código ══════════ -->
+  <div id="stage-player-code" class="panel" style="display:none;">
+    <div class="panel-title">Entrar na Mesa</div>
+    <p class="panel-sub">Digite o código recebido do Mestre</p>
+    <div class="field-group">
+      <label>Código da Sala</label>
+      <input type="text" id="join-code" placeholder="Ex: MBXK7P2" maxlength="10"
+             style="text-transform:uppercase;letter-spacing:0.15em;font-size:1.2rem;text-align:center;"
+             oninput="this.value=this.value.toUpperCase()" />
+    </div>
+    <button class="btn-player" onclick="buscarSala()">🔎 Buscar Sala</button>
+    <button class="btn-ghost"  onclick="show('stage-landing')">← Voltar</button>
+  </div>
+
+  <!-- ══════════ TELA 6: Jogador — Selecionar Personagem ══════════ -->
+  <div id="stage-player-select" class="panel" style="display:none; max-width:500px;">
+    <div class="panel-title" id="ps-title">Escolha seu Personagem</div>
+    <p class="panel-sub" id="ps-sub">selecione quem você é nesta sessão</p>
+    <div id="player-select-list"></div>
+    <div class="sec-header">Entrar como novo personagem</div>
+    <div class="field-group">
+      <label>Seu Nome</label>
+      <input type="text" id="new-player-name" placeholder="Ex: Thalindra" maxlength="24" />
+    </div>
+    <div class="field-group">
+      <label>Cor</label>
+      <div class="color-picker-row" id="new-player-colors"></div>
+    </div>
+    <button class="btn-confirm" onclick="joinAsNewPlayer()">🎲 Entrar</button>
+    <button class="btn-ghost"   onclick="show('stage-player-code')">← Voltar</button>
+  </div>
+
+</div><!-- /stage -->
+
+<!-- Modal: Adicionar Jogador -->
+<div class="modal-overlay" id="modal-add">
+  <div class="modal-card">
+    <div class="modal-title">Novo Jogador</div>
+    <div class="field-group">
+      <label>Nome</label>
+      <input type="text" id="modal-player-name" placeholder="Ex: Aragorn" />
+    </div>
+    <div class="field-group">
+      <label>Cor</label>
+      <div class="color-picker-row" id="modal-color-picker"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn"    onclick="closeModal()">Cancelar</button>
+      <button class="modal-btn ok" onclick="confirmAddPlayer()">✦ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ MODAL — Auth Mestre ═══════════════ -->
+<div class="modal-overlay" id="modal-auth">
+  <div class="modal-card">
+    <div class="modal-title">⚔ Acesso do Mestre</div>
+    <div class="auth-toggle">
+      <button id="auth-btn-login"   class="active" onclick="setAuthMode('login')">Entrar</button>
+      <button id="auth-btn-register"               onclick="setAuthMode('register')">Criar Conta</button>
+    </div>
+    <div class="field-group">
+      <label>E-mail</label>
+      <input type="email" id="auth-email" placeholder="mestre@exemplo.com" autocomplete="email">
+    </div>
+    <div class="field-group">
+      <label>Senha</label>
+      <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter') submitAuth()">
+    </div>
+    <div class="field-group" id="auth-confirm-wrap" style="display:none">
+      <label>Confirmar Senha</label>
+      <input type="password" id="auth-confirm" placeholder="••••••••" autocomplete="new-password"
+             onkeydown="if(event.key==='Enter') submitAuth()">
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+    <button class="btn-confirm" id="auth-submit-btn" onclick="submitAuth()">✦ Entrar</button>
+    <button class="btn-ghost" onclick="closeAuthModal()">← Cancelar</button>
+  </div>
+</div>
+
+<div class="version">MESA VIRTUAL · v0.1 ALPHA</div>
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="mb-state.js"></script>
+<script>
+  document.addEventListener('contextmenu', e => e.preventDefault(), true);
+
+  /* ── Estado Auth GM ── */
+  let GM_USER  = null;
+  let GM_TABLE = null;
+  let authMode = 'login';
+
+  /* ── Partículas ── */
+  (() => {
+    const el = document.getElementById('particles');
+    const drifts = [-30,-20,-10,0,10,20,30];
+    for (let i = 0; i < 18; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.cssText = `left:${Math.random()*100}%;bottom:-4px;
+        animation-duration:${5+Math.random()*8}s;animation-delay:${Math.random()*8}s;
+        --drift:${drifts[~~(Math.random()*drifts.length)]}px;
+        width:${1+Math.random()*2}px;height:${1+Math.random()*2}px;`;
+      el.appendChild(p);
+    }
+  })();
+
+  /* ── Cores disponíveis ── */
+  const COLORS = ['#c84040','#40a0c8','#50b850','#c8a040','#9040c8',
+                  '#c87040','#40c8b8','#c84090','#d4a843','#6080d0'];
+  let selectedColor   = COLORS[0];
+  let modalColor      = COLORS[0];
+  let currentSalaCode = ''; // sala encontrada pelo jogador
+
+  /* ── Toast ── */
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  /* ── Navegação ── */
+  function show(id) {
+    ['stage-loading','stage-landing','stage-gm-choice','stage-create','stage-dashboard',
+     'stage-player-code','stage-player-select']
+      .forEach(s => document.getElementById(s).style.display = 'none');
+    document.getElementById(id).style.display = 'block';
+    if (id === 'stage-dashboard') renderDashboard();
+    if (id === 'stage-gm-choice') renderGMChoice();
+  }
+
+  /* ── Clique em "Sou o Mestre" ── */
+  function onClickMestre() {
+    if (GM_USER) {
+      loadGMTableAndProceed();
+    } else {
+      openAuthModal();
+    }
+  }
+
+  /* ── Carrega mesa do GM via Firebase e navega ── */
+  function loadGMTableAndProceed() {
+    MBState.userTable.load(GM_USER.uid, tableData => {
+      GM_TABLE = tableData;
+      if (GM_TABLE) show('stage-gm-choice');
+      else          show('stage-create');
+    });
+  }
+
+  /* ═══ AUTH MODAL ═══ */
+  function openAuthModal() {
+    setAuthMode('login');
+    document.getElementById('modal-auth').classList.add('show');
+    setTimeout(() => document.getElementById('auth-email').focus(), 120);
+  }
+
+  function closeAuthModal() {
+    document.getElementById('modal-auth').classList.remove('show');
+    ['auth-error','auth-email','auth-password','auth-confirm']
+      .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    document.getElementById('auth-error').textContent = '';
+  }
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    document.getElementById('auth-btn-login').classList.toggle('active', mode === 'login');
+    document.getElementById('auth-btn-register').classList.toggle('active', mode === 'register');
+    document.getElementById('auth-confirm-wrap').style.display = mode === 'register' ? 'block' : 'none';
+    document.getElementById('auth-submit-btn').textContent = mode === 'login' ? '✦ Entrar' : '✦ Criar Conta';
+    document.getElementById('auth-error').textContent = '';
+  }
+
+  async function submitAuth() {
+    const email    = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const confirm  = document.getElementById('auth-confirm').value;
+    const btn      = document.getElementById('auth-submit-btn');
+    if (!email || !password) { document.getElementById('auth-error').textContent = 'Preencha e-mail e senha.'; return; }
+    if (authMode === 'register' && password !== confirm) { document.getElementById('auth-error').textContent = 'As senhas não conferem.'; return; }
+    if (authMode === 'register' && password.length < 6)  { document.getElementById('auth-error').textContent = 'Senha mínima: 6 caracteres.'; return; }
+    const orig = btn.textContent;
+    btn.textContent = '…'; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none';
+    document.getElementById('auth-error').textContent = '';
+    try {
+      let cred;
+      if (authMode === 'login') cred = await firebase.auth().signInWithEmailAndPassword(email, password);
+      else                      cred = await firebase.auth().createUserWithEmailAndPassword(email, password);
+      GM_USER = cred.user;
+      closeAuthModal();
+      loadGMTableAndProceed();
+    } catch(e) {
+      const msgs = {
+        'auth/user-not-found':'E-mail não cadastrado.',
+        'auth/wrong-password':'Senha incorreta.',
+        'auth/invalid-credential':'E-mail ou senha incorretos.',
+        'auth/email-already-in-use':'E-mail já cadastrado. Faça login.',
+        'auth/weak-password':'Senha fraca (mín. 6 caracteres).',
+        'auth/invalid-email':'E-mail inválido.',
+        'auth/too-many-requests':'Muitas tentativas. Tente mais tarde.',
+        'auth/network-request-failed':'Erro de rede.'
+      };
+      document.getElementById('auth-error').textContent = msgs[e.code] || 'Erro ao autenticar.';
+    } finally {
+      btn.textContent = orig; btn.style.opacity = ''; btn.style.pointerEvents = '';
+    }
+  }
+
+  function signOutGM() {
+    if (!confirm('Sair da sua conta de Mestre?')) return;
+    firebase.auth().signOut().then(() => { GM_USER = null; GM_TABLE = null; show('stage-landing'); showToast('✦ Sessão encerrada.'); });
+  }
+
+  /* ─────────────────────────────────────────────────
+     FLUXO DO MESTRE
+  ───────────────────────────────────────────────── */
+  function renderGMChoice() {
+    const t = GM_TABLE;
+    if (!t) { show('stage-create'); return; }
+    const el = document.getElementById('existing-mesa-info');
+    el.innerHTML = `
+      <div class="em-name">⚔ ${t.name}</div>
+      <div class="em-code">Código: ${t.salaCode || '—'} · ${(t.players||[]).length} jogador(es)</div>
+    `;
+  }
+
+  function createTable() {
+    const name = document.getElementById('campaign-name').value.trim();
+    if (!name) { showToast('✦ Nomeie sua campanha.'); return; }
+    if (!GM_USER) { openAuthModal(); return; }
+    GM_TABLE = MBState.userTable.create(GM_USER.uid, name);
+    show('stage-dashboard');
+    showToast('✦ Mesa criada! Compartilhe o código com os jogadores.');
+  }
+
+  function enterAsGM() {
+    const sala = (GM_TABLE && GM_TABLE.salaCode) || 'LOCAL';
+    window.location.href = 'mesa.html?role=gm&sala=' + sala + '&name=Mestre';
+  }
+
+  function copyCode() {
+    const code = (GM_TABLE && GM_TABLE.salaCode) || '';
+    if (!code) return;
+    navigator.clipboard.writeText(code)
+      .then(() => showToast('✓ Código copiado: ' + code))
+      .catch(() => prompt('Código da sala:', code));
+  }
+
+  function renderDashboard() {
+    const t = GM_TABLE;
+    if (!t) { show('stage-landing'); return; }
+
+    document.getElementById('dash-title').textContent = t.name;
+    document.getElementById('room-code-display').textContent = t.salaCode || '——';
+
+    // Mostra e-mail do Mestre logado
+    const emailEl = document.getElementById('gm-user-email');
+    if (emailEl && GM_USER) emailEl.textContent = '👤 ' + (GM_USER.email || 'Mestre');
+
+    const list = document.getElementById('player-list');
+    list.innerHTML = '';
+    const players = t.players || [];
+
+    if (players.length === 0) {
+      list.innerHTML = '<div class="empty-state">Nenhum jogador adicionado ainda.</div>';
+      return;
+    }
+
+    players.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'player-row';
+      row.innerHTML = `
+        <div class="player-dot" style="background:${p.color}"></div>
+        <div class="player-name-txt">${p.name}</div>
+        <button class="btn-sm rm" onclick="removePlayer('${p.id}')">✕</button>
+      `;
+      list.appendChild(row);
+    });
+  }
+
+  function removePlayer(pid) {
+    if (!GM_USER || !GM_TABLE) return;
+    GM_TABLE = MBState.userTable.removePlayer(GM_USER.uid, GM_TABLE, pid);
+    renderDashboard();
+    showToast('Jogador removido.');
+  }
+
+  function confirmReset() {
+    if (confirm('Isso vai APAGAR a mesa permanentemente do Firebase.\nTem certeza?')) {
+      if (GM_USER && GM_TABLE) MBState.userTable.reset(GM_USER.uid, GM_TABLE);
+      GM_TABLE = null;
+      showToast('Mesa encerrada.');
+      show('stage-landing');
+    }
+  }
+
+  /* ── Modal: Adicionar Jogador ── */
+  function buildColorPicker(containerId, onSelect) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    COLORS.forEach(c => {
+      const opt = document.createElement('div');
+      opt.className = 'color-option' + (c === onSelect.current ? ' selected' : '');
+      opt.style.backgroundColor = c;
+      opt.onclick = () => {
+        el.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        onSelect.current = c;
+      };
+      el.appendChild(opt);
+    });
+  }
+
+  function openAddModal() {
+    modalColor = COLORS[0];
+    document.getElementById('modal-player-name').value = '';
+    buildColorPicker('modal-color-picker', { get current(){ return modalColor; }, set current(v){ modalColor=v; } });
+    document.getElementById('modal-add').classList.add('show');
+    document.getElementById('modal-player-name').focus();
+  }
+
+  function closeModal() {
+    document.getElementById('modal-add').classList.remove('show');
+  }
+
+  function confirmAddPlayer() {
+    const name = document.getElementById('modal-player-name').value.trim();
+    if (!name) { showToast('✦ Insira um nome.'); return; }
+    if (!GM_USER || !GM_TABLE) return;
+    GM_TABLE = MBState.userTable.addPlayer(GM_USER.uid, GM_TABLE, name, modalColor);
+    closeModal();
+    renderDashboard();
+    showToast('✦ ' + name + ' adicionado!');
+  }
+
+  /* ─────────────────────────────────────────────────
+     FLUXO DO JOGADOR
+  ───────────────────────────────────────────────── */
+
+  /* Passo 1: busca a sala no Firebase */
+  function buscarSala() {
+    const code = document.getElementById('join-code').value.trim().toUpperCase();
+    if (!code) { showToast('✦ Insira o código da sala.'); return; }
+
+    const db = (typeof firebase !== 'undefined') ? firebase.database() : null;
+    if (!db) {
+      showToast('⚠ Firebase não conectado. Tente novamente.');
+      return;
+    }
+
+    showToast('Buscando sala...');
+    db.ref('mesas/' + code + '/info').once('value', snap => {
+      const info = snap.val();
+      if (!info) {
+        showToast('✦ Sala não encontrada. Verifique o código.');
+        return;
+      }
+      currentSalaCode = code;
+      renderPlayerSelect(info, code);
+      show('stage-player-select');
+    });
+  }
+
+  /* Passo 2: exibe lista de personagens pré-definidos */
+  function renderPlayerSelect(info, code) {
+    document.getElementById('ps-title').textContent = info.name || 'Escolha seu Personagem';
+    document.getElementById('ps-sub').textContent   = 'Sala: ' + code + ' — selecione seu personagem';
+
+    const list    = document.getElementById('player-select-list');
+    const players = info.players
+      ? (Array.isArray(info.players) ? info.players : Object.values(info.players))
+      : [];
+
+    list.innerHTML = '';
+
+    if (players.length === 0) {
+      list.innerHTML = '<div class="empty-state" style="margin-bottom:8px;">Nenhum personagem pré-definido.</div>';
+    } else {
+      players.forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'player-select-row';
+        row.innerHTML = `
+          <div class="player-dot" style="background:${p.color};width:14px;height:14px;border-radius:50%;border:2px solid rgba(212,168,67,0.4);flex-shrink:0;"></div>
+          <div class="pname">${p.name}</div>
+          <div class="penter">Entrar →</div>
+        `;
+        row.onclick = () => joinAsExistingPlayer(p, code);
+        list.appendChild(row);
+      });
+    }
+
+    // Inicializa o color picker para novo personagem
+    selectedColor = COLORS[0];
+    buildColorPicker('new-player-colors', { get current(){ return selectedColor; }, set current(v){ selectedColor=v; } });
+  }
+
+  /* Entrar como personagem pré-definido pelo Mestre */
+  function joinAsExistingPlayer(player, code) {
+    window.location.href = 'mesa.html?sala=' + code
+      + '&name=' + encodeURIComponent(player.name)
+      + '&role=player'
+      + '&color=' + encodeURIComponent(player.color);
+  }
+
+  /* Entrar como personagem novo (não pré-definido) */
+  function joinAsNewPlayer() {
+    const name = document.getElementById('new-player-name').value.trim();
+    if (!name)            { showToast('✦ Insira seu nome.');         return; }
+    if (!currentSalaCode) { showToast('✦ Código de sala inválido.'); return; }
+
+    const db = (typeof firebase !== 'undefined') ? firebase.database() : null;
+    const playerId = 'p_' + Date.now();
+
+    const proceed = () => {
+      window.location.href = 'mesa.html?sala=' + currentSalaCode
+        + '&name=' + encodeURIComponent(name)
+        + '&role=player'
+        + '&color=' + encodeURIComponent(selectedColor);
+    };
+
+    if (db) {
+      // Registra o novo jogador na lista da mesa
+      db.ref('mesas/' + currentSalaCode + '/info/players/' + playerId)
+        .set({ id: playerId, name, color: selectedColor })
+        .then(proceed).catch(proceed);
+    } else {
+      proceed();
+    }
+  }
+
+  /* ─────────────────────────────────────────────────
+     INICIALIZAÇÃO E ATALHOS
+  ───────────────────────────────────────────────── */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      closeModal();
+    }
+    if (e.key === 'Enter') {
+      if (document.getElementById('modal-add').classList.contains('show')) { confirmAddPlayer(); return; }
+      if (document.getElementById('stage-create').style.display !== 'none') { createTable(); return; }
+      if (document.getElementById('stage-player-code').style.display !== 'none') { buscarSala(); return; }
+    }
+  });
+
+  // Aguarda resolução do estado de autenticação antes de mostrar qualquer tela
+  show('stage-loading');
+  if (typeof firebase !== 'undefined') {
+    firebase.auth().onAuthStateChanged(user => {
+      GM_USER = user;
+      show('stage-landing');
+    });
+  } else {
+    show('stage-landing');
+  }
+</script>
+<!-- ── SECURITY ─────────────────────────────────────────────────────────── -->
+<script>
+(function(){
+  'use strict';
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
+  document.addEventListener('keydown', function(e){
+    var c = e.ctrlKey || e.metaKey;
+    if(e.key === 'F12') { e.preventDefault(); return false; }
+    if(c && e.key === 'u') { e.preventDefault(); return false; }
+    if(c && e.key === 's') { e.preventDefault(); return false; }
+    if(c && e.shiftKey && (e.key==='I'||e.key==='i')) { e.preventDefault(); return false; }
+    if(c && e.shiftKey && (e.key==='J'||e.key==='j')) { e.preventDefault(); return false; }
+    if(c && e.shiftKey && (e.key==='C'||e.key==='c')) { e.preventDefault(); return false; }
+  }, true);
+  document.addEventListener('dragstart', function(e){ e.preventDefault(); }, true);
+  var s = document.createElement('style');
+  s.textContent = 'img{pointer-events:none;}';
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>

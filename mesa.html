@@ -1,0 +1,2285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesa Virtual — Mesa</title>
+<link rel="stylesheet" href="mb-shared.css">
+<style>
+/* ═══════════════════════════════════════════════
+   LAYOUT DA MESA
+═══════════════════════════════════════════════ */
+body { overflow: hidden; user-select: none; }
+
+/* ── Header ── */
+.mesa-header {
+  position: fixed; top: 0; left: 0; right: 0; height: 46px; z-index: 200;
+  background: rgba(8,6,4,0.97);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.5);
+}
+.header-logo {
+  font-family: 'Cinzel Decorative', cursive; font-size: 0.85rem;
+  color: var(--gold); letter-spacing: 0.1em;
+  white-space: nowrap; margin-right: 6px;
+}
+.header-logo span { color: var(--ember); }
+.camp-name {
+  font-family: 'Cinzel', serif; font-size: 0.7rem;
+  color: var(--dim); letter-spacing: 0.12em;
+  border-left: 1px solid var(--border); padding-left: 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+}
+.tool-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+.header-tools { display: flex; align-items: center; gap: 3px; margin: 0 8px; }
+.tool-btn {
+  width: 34px; height: 30px;
+  background: transparent; border: 1px solid transparent;
+  border-radius: 2px; color: var(--dim); cursor: pointer;
+  font-size: 0.95rem; transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+}
+.tool-btn:hover { color: var(--pale); border-color: var(--border); background: rgba(200,113,42,0.08); }
+.tool-btn.active { color: var(--gold); border-color: var(--ember); background: rgba(200,113,42,0.15); }
+.tool-btn.on { color: var(--gold); }
+.header-right {
+  margin-left: auto; display: flex; align-items: center; gap: 10px;
+}
+.room-badge {
+  font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.2em;
+  color: var(--dim); padding: 3px 8px;
+  border: 1px solid var(--border); border-radius: 2px;
+}
+.role-badge {
+  font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.2em;
+  padding: 3px 10px; border-radius: 2px;
+  background: rgba(139,26,26,0.25); border: 1px solid rgba(139,26,26,0.5);
+  color: #e87070;
+}
+.role-badge.player {
+  background: rgba(58,122,170,0.2); border-color: rgba(58,122,170,0.5);
+  color: #7ab4d4;
+}
+.btn-lobby {
+  padding: 4px 10px; background: transparent;
+  border: 1px solid var(--border); border-radius: 2px;
+  color: var(--dim); font-family: 'Cinzel', serif;
+  font-size: 0.58rem; letter-spacing: 0.15em; cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-lobby:hover { color: var(--pale); border-color: var(--border-h); }
+
+/* ── Corpo da mesa ── */
+.mesa-body {
+  position: fixed; top: 46px; bottom: 0; left: 0; right: 0;
+  display: flex; overflow: hidden;
+}
+
+/* ── Painel Esquerdo — Ficha ── */
+.panel-left {
+  width: 320px; min-width: 320px;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  transition: width 0.25s, min-width 0.25s;
+  overflow: hidden; z-index: 10;
+}
+.panel-left.collapsed { width: 0; min-width: 0; }
+.panel-left .inner { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+
+/* ── Mapa central ── */
+.map-container {
+  flex: 1; position: relative; overflow: hidden;
+  background: #1a1408;
+}
+.map-stage {
+  position: absolute; top: 0; left: 0;
+  width: 3000px; height: 3000px;
+  cursor: crosshair;
+}
+#grid-canvas {
+  position: absolute; top: 0; left: 0;
+  width: 3000px; height: 3000px;
+}
+#token-layer {
+  position: absolute; top: 0; left: 0;
+  width: 3000px; height: 3000px;
+  pointer-events: none;
+}
+.fog-overlay {
+  position: absolute; top: 0; left: 0;
+  width: 3000px; height: 3000px;
+  background: rgba(0,0,0,0.82);
+  pointer-events: none; z-index: 5;
+  display: none;
+}
+
+/* ── Painel Direito — Chat / Dados / Iniciativa ── */
+.panel-right {
+  width: 275px; min-width: 275px;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  transition: width 0.25s, min-width 0.25s;
+  overflow: hidden; z-index: 10;
+}
+.panel-right.collapsed { width: 0; min-width: 0; }
+
+/* ── Abas direitas ── */
+.right-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.3); flex-shrink: 0;
+}
+.rtab {
+  flex: 1; padding: 9px 4px;
+  background: transparent; border: none;
+  color: var(--dim); font-family: 'Cinzel', serif;
+  font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+.rtab:hover { color: var(--pale); }
+.rtab.active { color: var(--gold); border-bottom-color: var(--ember); }
+
+.rtab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.rtab-content.active { display: flex; }
+
+/* ── Chat ── */
+.chat-log {
+  flex: 1; overflow-y: auto; padding: 10px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.chat-msg {
+  padding: 6px 9px; border-radius: 2px;
+  font-size: 0.88rem; line-height: 1.4;
+  border-left: 2px solid transparent;
+}
+.chat-msg.gm { border-left-color: var(--blood); background: rgba(139,26,26,0.08); }
+.chat-msg.player { border-left-color: var(--info); background: rgba(58,122,170,0.06); }
+.chat-msg.roll { border-left-color: var(--gold); background: rgba(212,168,67,0.06); }
+.chat-msg.system { border-left-color: var(--dim); color: var(--dim); font-style: italic; font-size: 0.82rem; }
+.chat-author { font-family: 'Cinzel', serif; font-size: 0.6rem; letter-spacing: 0.12em; color: var(--dim); display: block; margin-bottom: 2px; }
+.roll-result { font-family: 'Cinzel', serif; font-size: 0.95rem; color: var(--gold); letter-spacing: 0.08em; }
+.roll-detail { font-size: 0.78rem; color: var(--dim); }
+.chat-input-row {
+  display: flex; gap: 4px; padding: 8px;
+  border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.chat-input-row input {
+  flex: 1;
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 2px; padding: 7px 10px;
+  color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.9rem;
+  outline: none; transition: border-color 0.2s;
+}
+.chat-input-row input:focus { border-color: var(--border-h); }
+.chat-input-row input::placeholder { color: rgba(138,122,101,0.4); font-style: italic; font-size: 0.82rem; }
+.send-btn {
+  padding: 0 10px; background: rgba(200,113,42,0.15);
+  border: 1px solid var(--border); border-radius: 2px;
+  color: var(--ember); cursor: pointer; font-size: 1rem;
+  transition: all 0.2s;
+}
+.send-btn:hover { background: rgba(200,113,42,0.3); }
+
+/* ── Dados ── */
+.dice-panel { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.dice-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
+}
+.die-btn {
+  padding: 10px 4px;
+  background: linear-gradient(135deg, rgba(28,23,18,0.9), rgba(17,14,10,0.95));
+  border: 1px solid var(--border); border-radius: 2px;
+  color: var(--gold); font-family: 'Cinzel', serif;
+  font-size: 0.75rem; letter-spacing: 0.08em;
+  cursor: pointer; transition: all 0.15s; text-align: center;
+}
+.die-btn:hover { border-color: var(--ember); background: rgba(200,113,42,0.15); transform: translateY(-1px); }
+.die-btn:active { transform: translateY(0); }
+.die-btn.special { color: var(--ember); }
+
+.custom-roll-row {
+  display: flex; align-items: center; gap: 4px;
+  padding: 10px; background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border); border-radius: 2px;
+}
+.custom-roll-row input {
+  width: 44px; text-align: center;
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 2px; padding: 5px 4px;
+  color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.9rem;
+  outline: none;
+}
+.custom-roll-row input:focus { border-color: var(--border-h); }
+.custom-roll-row span { color: var(--dim); font-size: 0.85rem; }
+.custom-roll-row .roll-custom-btn {
+  flex: 1; padding: 6px;
+  background: rgba(200,113,42,0.15); border: 1px solid var(--border-h);
+  border-radius: 2px; color: var(--gold);
+  font-family: 'Cinzel', serif; font-size: 0.62rem; letter-spacing: 0.1em;
+  cursor: pointer; transition: all 0.15s;
+}
+.custom-roll-row .roll-custom-btn:hover { background: rgba(200,113,42,0.3); }
+
+.dice-result-box {
+  padding: 10px; background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border); border-radius: 2px;
+  min-height: 60px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+}
+.dice-result-total {
+  font-family: 'Cinzel Decorative', cursive; font-size: 2rem;
+  color: var(--gold); text-shadow: 0 0 20px rgba(212,168,67,0.5);
+  line-height: 1;
+}
+.dice-result-detail { font-size: 0.8rem; color: var(--dim); }
+
+/* ── Iniciativa ── */
+.init-panel { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.init-list { display: flex; flex-direction: column; gap: 3px; }
+.init-entry {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 10px; border-radius: 2px;
+  background: rgba(0,0,0,0.2); border: 1px solid var(--border);
+  transition: all 0.2s;
+}
+.init-entry.active-turn {
+  background: rgba(200,113,42,0.12); border-color: var(--ember);
+  box-shadow: 0 0 12px rgba(200,113,42,0.1);
+}
+.init-num {
+  font-family: 'Cinzel', serif; font-size: 0.9rem; font-weight: 600;
+  color: var(--gold); width: 28px; text-align: right; flex-shrink: 0;
+}
+.init-name { flex: 1; font-size: 0.9rem; color: var(--pale); }
+.init-turn-marker { color: var(--ember); font-size: 0.8rem; }
+.init-del { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 0.9rem; opacity: 0.5; transition: opacity 0.2s; }
+.init-del:hover { opacity: 1; color: var(--danger); }
+
+.init-add-row {
+  display: flex; gap: 4px; padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.init-add-row input {
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 2px; padding: 6px 8px;
+  color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.88rem;
+  outline: none;
+}
+.init-add-row input:focus { border-color: var(--border-h); }
+.init-add-row .init-name-in { flex: 1; }
+.init-add-row .init-num-in { width: 46px; text-align: center; }
+.init-actions {
+  display: flex; gap: 4px;
+}
+.init-btn {
+  flex: 1; padding: 6px 8px;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 2px; color: var(--dim);
+  font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.1em;
+  cursor: pointer; transition: all 0.2s;
+}
+.init-btn:hover { color: var(--pale); border-color: var(--border-h); }
+.init-btn.next { color: var(--gold); border-color: rgba(200,113,42,0.35); }
+.init-btn.next:hover { background: rgba(200,113,42,0.15); }
+
+/* ── Ficha de Personagem ── */
+.ficha-section {
+  margin-bottom: 10px;
+  border: 1px solid var(--border); border-radius: 2px;
+  overflow: hidden;
+}
+.ficha-section-header {
+  padding: 6px 10px;
+  background: rgba(0,0,0,0.3);
+  font-family: 'Cinzel', serif; font-size: 0.6rem;
+  letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim);
+  cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  transition: color 0.2s;
+}
+.ficha-section-header:hover { color: var(--pale); }
+.ficha-section-body { padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+.ficha-section-body.collapsed { display: none; }
+
+.attr-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+}
+.attr-cell {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 6px 4px; background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border); border-radius: 2px;
+}
+.attr-name { font-family: 'Cinzel', serif; font-size: 0.55rem; letter-spacing: 0.15em; color: var(--dim); margin-bottom: 3px; }
+.attr-val {
+  width: 38px; text-align: center;
+  background: transparent; border: none; border-bottom: 1px solid var(--border);
+  color: var(--gold); font-family: 'Cinzel', serif; font-size: 1.1rem;
+  outline: none; padding: 1px 0;
+}
+.attr-val:focus { border-bottom-color: var(--ember); }
+.attr-mod { font-size: 0.7rem; color: var(--dim); margin-top: 2px; }
+
+.resource-row {
+  display: flex; align-items: center; gap: 5px;
+}
+.resource-label { font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.08em; color: var(--dim); width: 28px; flex-shrink: 0; }
+.resource-cur, .resource-max {
+  width: 46px; text-align: center;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 2px; padding: 4px 4px;
+  color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.9rem;
+  outline: none; transition: border-color 0.2s;
+}
+.resource-cur:focus, .resource-max:focus { border-color: var(--border-h); }
+.resource-sep { color: var(--dim); font-size: 0.85rem; }
+.resource-bar { flex: 1; height: 5px; background: rgba(0,0,0,0.3); border-radius: 3px; overflow: hidden; }
+.resource-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+.fill-pv { background: linear-gradient(90deg, #5a1010, #c84040); }
+.fill-pm { background: linear-gradient(90deg, #1a3a5a, #4080c0); }
+
+.ficha-text {
+  width: 100%; min-height: 60px; resize: vertical;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 2px; padding: 6px 8px;
+  color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.88rem;
+  line-height: 1.45; outline: none; transition: border-color 0.2s;
+}
+.ficha-text:focus { border-color: var(--border-h); }
+
+.ficha-field { display: flex; flex-direction: column; gap: 4px; }
+.ficha-field label { font-family: 'Cinzel', serif; font-size: 0.55rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+.ficha-field input {
+  width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 2px; padding: 5px 8px;
+  color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.9rem;
+  outline: none; transition: border-color 0.2s;
+}
+.ficha-field input:focus { border-color: var(--border-h); }
+.ficha-row { display: flex; gap: 6px; }
+.ficha-row .ficha-field { flex: 1; }
+
+.combat-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+}
+.combat-cell { display: flex; flex-direction: column; gap: 3px; }
+.combat-cell label { font-family: 'Cinzel', serif; font-size: 0.52rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.combat-cell input {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 2px;
+  padding: 4px 6px; color: var(--pale); font-family: 'EB Garamond', serif;
+  font-size: 0.88rem; outline: none; transition: border-color 0.2s;
+}
+.combat-cell input:focus { border-color: var(--border-h); }
+
+.save-indicator {
+  font-family: 'Cinzel', serif; font-size: 0.52rem; letter-spacing: 0.12em;
+  color: var(--dim); text-align: right; padding: 4px 0;
+  transition: color 0.3s;
+}
+.save-indicator.saved { color: var(--success); }
+
+/* ── Tokens ── */
+.token {
+  position: absolute; pointer-events: all; cursor: pointer; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  transform: translate(-50%, -50%);
+}
+.token-body {
+  border-radius: 50%; border: 2px solid rgba(255,255,255,0.4);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; transition: box-shadow 0.15s, border-color 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+}
+.token.selected .token-body {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(212,168,67,0.5), 0 2px 12px rgba(0,0,0,0.8);
+}
+.token-label {
+  font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.06em;
+  color: #fff; text-shadow: 0 0 4px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,1);
+  white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+.token-hp-bar {
+  width: 44px; height: 4px; background: rgba(0,0,0,0.5);
+  border-radius: 2px; overflow: hidden;
+}
+.token-hp-fill { height: 100%; background: #c84040; border-radius: 2px; transition: width 0.3s; }
+.token:hover .token-body { border-color: rgba(255,255,255,0.8); }
+
+/* ── Menu de contexto ── */
+.ctx-menu {
+  position: fixed; z-index: 500;
+  background: rgba(14,11,8,0.98); border: 1px solid var(--border-h);
+  border-radius: 2px; padding: 4px 0; min-width: 160px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.7);
+  animation: scaleIn 0.12s ease;
+}
+.ctx-item {
+  padding: 8px 14px; cursor: pointer;
+  font-family: 'Cinzel', serif; font-size: 0.65rem; letter-spacing: 0.1em;
+  color: var(--dim); transition: all 0.15s; display: flex; align-items: center; gap: 8px;
+}
+.ctx-item:hover { color: var(--pale); background: rgba(200,113,42,0.1); }
+.ctx-item.danger:hover { color: #e87070; background: rgba(139,26,26,0.15); }
+.ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+
+/* ── Modal Adicionar Token ── */
+.color-picker-row {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;
+}
+.color-dot {
+  width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; transition: border-color 0.15s, transform 0.15s;
+}
+.color-dot:hover { transform: scale(1.1); }
+.color-dot.selected { border-color: var(--gold); }
+
+/* ── Painel collapse button ── */
+.collapse-tab {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 14px; height: 50px;
+  background: rgba(200,113,42,0.1); border: 1px solid var(--border);
+  cursor: pointer; color: var(--dim); font-size: 0.6rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; z-index: 20; border-radius: 0 2px 2px 0;
+}
+.collapse-tab:hover { background: rgba(200,113,42,0.2); color: var(--pale); }
+.collapse-tab-right {
+  border-radius: 2px 0 0 2px;
+  left: -14px;
+}
+
+/* ── Ficha Tabs (esquerda) ── */
+.ficha-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.4); flex-shrink: 0;
+}
+.ftab {
+  flex: 1; padding: 8px 3px;
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--dim); font-family: 'Cinzel', serif;
+  font-size: 0.65rem; letter-spacing: 0.06em; text-transform: uppercase;
+  cursor: pointer; transition: all 0.2s;
+}
+.ftab:hover { color: var(--pale); }
+.ftab.active { color: var(--gold); border-bottom-color: var(--ember); }
+.ftab-content { display: none; overflow-y: auto; flex: 1; padding: 10px 10px 24px; min-height: 0; }
+.ftab-content.active { display: block; }
+
+/* ── Atributo MB (total + 6 sub-valores) ── */
+.mb-attr-block {
+  border: 1px solid var(--border); border-radius: 2px;
+  margin-bottom: 6px; overflow: hidden;
+}
+.mb-attr-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px; background: rgba(0,0,0,0.3);
+}
+.mb-attr-total {
+  width: 30px; height: 30px; flex-shrink: 0;
+  background: rgba(200,113,42,0.12); border: 2px solid var(--ember);
+  border-radius: 3px; display: flex; align-items: center; justify-content: center;
+  font-family: 'Cinzel', serif; font-size: 1rem; font-weight: 600; color: var(--gold);
+  cursor: default;
+}
+.mb-attr-name {
+  font-family: 'Cinzel', serif; font-size: 0.75rem;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--pale); flex: 1;
+}
+.mb-attr-subs {
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  border-top: 1px solid var(--border);
+}
+.mb-sub {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 3px 2px 4px; border-right: 1px solid var(--border);
+}
+.mb-sub:last-child { border-right: none; }
+.mb-sub-label {
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  font-size: 0.56rem; letter-spacing: 0em; color: var(--dim);
+  text-transform: uppercase; margin-bottom: 2px; white-space: nowrap;
+}
+.mb-sub input {
+  width: 100%; text-align: center;
+  background: transparent; border: none; border-bottom: 1px solid var(--border);
+  color: var(--pale); font-family: 'Cinzel', serif; font-size: 0.82rem;
+  outline: none; padding: 1px 0;
+}
+.mb-sub input:focus { border-bottom-color: var(--ember); }
+
+/* ── Seção label ── */
+.mb-sec-label {
+  font-family: 'Cinzel', serif; font-size: 0.65rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--dim);
+  padding: 7px 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 7px;
+}
+
+/* ── Layout helpers ── */
+.two-cell { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.one-cell { display: flex; flex-direction: column; gap: 2px; }
+.one-cell label {
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  font-size: 0.62rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim);
+}
+.one-cell input {
+  width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 2px; padding: 4px 7px;
+  color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.88rem;
+  outline: none; transition: border-color 0.2s;
+}
+.one-cell input:focus { border-color: var(--border-h); }
+.one-cell textarea {
+  width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 2px; padding: 4px 7px;
+  color: var(--pale); font-family: 'EB Garamond', serif; font-size: 0.85rem;
+  outline: none; resize: vertical; min-height: 44px; transition: border-color 0.2s;
+}
+.one-cell textarea:focus { border-color: var(--border-h); }
+
+/* ── Defesa ── */
+.defesa-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.defesa-cell {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 5px 3px; background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border); border-radius: 2px;
+}
+.defesa-cell label {
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  font-size: 0.6rem; letter-spacing: 0.04em; color: var(--dim);
+  margin-bottom: 3px; text-align: center;
+}
+.defesa-cell input {
+  width: 42px; text-align: center;
+  background: transparent; border: none; border-bottom: 1px solid var(--border);
+  color: var(--gold); font-family: 'Cinzel', serif; font-size: 1rem;
+  outline: none; padding: 1px 0;
+}
+.defesa-cell input:focus { border-bottom-color: var(--ember); }
+
+/* ── Tabelas MB ── */
+.mb-table-wrap { border: 1px solid var(--border); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.mb-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.mb-table th {
+  font-family: system-ui, 'Segoe UI', sans-serif; font-size: 0.58rem; letter-spacing: 0.04em;
+  color: var(--dim); text-transform: uppercase;
+  padding: 4px 5px; text-align: left; border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.2);
+}
+.mb-table td { padding: 1px 2px; border-bottom: 1px solid rgba(200,113,42,0.06); }
+.mb-table input {
+  width: 100%; background: transparent; border: none;
+  color: var(--pale); font-family: 'EB Garamond', serif;
+  font-size: 0.82rem; outline: none; padding: 2px 3px;
+  border-bottom: 1px solid transparent; transition: border-color 0.15s;
+}
+.mb-table input:focus { border-bottom-color: var(--ember); }
+.mb-table input[type="number"] { text-align: center; }
+
+/* ── XP Dots ── */
+.xp-wrap { display: flex; gap: 3px; flex-wrap: wrap; }
+.xp-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid var(--ember); background: transparent;
+  cursor: pointer; transition: background 0.15s; flex-shrink: 0;
+}
+.xp-dot.filled { background: var(--ember); }
+
+/* ── Dynamic tables (Habilidades / Magias / Equip.) ── */
+.mb-dyn-wrap { border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+.mb-dyn-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.mb-dyn-table th {
+  font-family: system-ui, 'Segoe UI', sans-serif; font-size: 0.58rem; letter-spacing: 0.03em;
+  color: var(--dim); text-transform: uppercase;
+  padding: 4px 5px; text-align: left; border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.2); white-space: nowrap;
+}
+.mb-dyn-table td { padding: 1px 2px; border-bottom: 1px solid rgba(200,113,42,0.05); vertical-align: middle; }
+.mb-dyn-table input {
+  width: 100%; background: transparent; border: none;
+  color: var(--pale); font-family: 'EB Garamond', serif;
+  font-size: 0.82rem; outline: none; padding: 2px 3px;
+  border-bottom: 1px solid transparent; transition: border-color 0.15s;
+}
+.mb-dyn-table input:focus { border-bottom-color: var(--ember); }
+.mb-row-del {
+  background: none; border: none; color: var(--dim); cursor: pointer;
+  font-size: 0.75rem; opacity: 0.45; padding: 0 3px; line-height: 1;
+}
+.mb-row-del:hover { opacity: 1; color: var(--danger); }
+.mb-add-btn {
+  margin-top: 6px; padding: 5px 10px; width: 100%;
+  background: rgba(200,113,42,0.07); border: 1px dashed rgba(200,113,42,0.28);
+  border-radius: 2px; color: var(--dim); font-family: 'Cinzel', serif;
+  font-size: 0.54rem; letter-spacing: 0.12em; cursor: pointer; transition: all 0.2s;
+}
+.mb-add-btn:hover { color: var(--pale); background: rgba(200,113,42,0.15); }
+
+/* ── Grid size info ── */
+.map-info {
+  position: absolute; bottom: 8px; left: 12px; z-index: 30;
+  font-family: 'Cinzel', serif; font-size: 0.55rem; letter-spacing: 0.12em;
+  color: rgba(138,122,101,0.4); pointer-events: none;
+}
+
+/* ── Popup Vantagem / Desvantagem ── */
+.roll-mode-popup {
+  position: fixed; z-index: 600;
+  background: rgba(12,9,6,0.99); border: 1px solid var(--border-h);
+  border-radius: 3px; padding: 6px 0;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+  animation: scaleIn 0.1s ease; min-width: 195px;
+}
+.roll-mode-title {
+  font-family: 'Cinzel', serif; font-size: 0.54rem; letter-spacing: 0.18em;
+  color: var(--ember); text-transform: uppercase;
+  padding: 3px 14px 6px; border-bottom: 1px solid var(--border); margin-bottom: 3px;
+}
+.roll-mode-opt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px; cursor: pointer;
+  font-family: 'Cinzel', serif; font-size: 0.62rem; letter-spacing: 0.08em;
+  color: var(--dim); background: transparent; border: none; width: 100%;
+  text-align: left; transition: all 0.12s;
+}
+.roll-mode-opt:hover { background: rgba(200,113,42,0.08); }
+.roll-mode-opt .rmo-dice { font-size: 0.9rem; width: 20px; flex-shrink: 0; }
+.roll-mode-opt .rmo-label { flex: 1; }
+.roll-mode-opt .rmo-tag {
+  font-size: 0.48rem; letter-spacing: 0.12em; padding: 1px 5px;
+  border-radius: 2px; border: 1px solid currentColor; opacity: 0.55;
+  white-space: nowrap;
+}
+.roll-mode-opt.desv { color: #e87070; }
+.roll-mode-opt.norm { color: var(--gold); }
+.roll-mode-opt.vant { color: var(--success, #5cb85c); }
+</style>
+</head>
+<body>
+
+<!-- Fundo e bordas decorativas -->
+<div class="rune-top"></div>
+<div class="rune-bottom"></div>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header class="mesa-header">
+  <span class="header-logo">⚔ <span>Mighty</span> Blade</span>
+  <span class="camp-name" id="camp-name">Carregando…</span>
+
+  <div class="tool-sep"></div>
+
+  <!-- Ferramentas de mapa -->
+  <div class="header-tools">
+    <button class="tool-btn active" id="tool-select" onclick="setTool('select')" title="Selecionar (S)">↖</button>
+    <button class="tool-btn" id="tool-move" onclick="setTool('move')" title="Mover Mapa (M)">✋</button>
+    <button class="tool-btn" id="tool-addtoken" onclick="openAddToken(null, null)" title="Adicionar Token (T)">👤</button>
+    <div class="tool-sep"></div>
+    <button class="tool-btn on" id="btn-grid" onclick="toggleGrid()" title="Grade (G)">▦</button>
+    <button class="tool-btn" id="btn-fog" onclick="toggleFog()" title="Névoa de Guerra (F)">🌫</button>
+    <div class="tool-sep"></div>
+    <button class="tool-btn" onclick="openGridSettings()" title="Tamanho da Grade">⚙</button>
+  </div>
+
+  <!-- Direita -->
+  <div class="header-right">
+    <span class="room-badge" id="room-badge">SALA: —</span>
+    <span class="role-badge" id="role-badge">GM</span>
+    <button class="btn-lobby" onclick="goLobby()">← Lobby</button>
+  </div>
+</header>
+
+<!-- ═══════════════ CORPO ═══════════════ -->
+<div class="mesa-body">
+
+  <!-- ── PAINEL ESQUERDO — Ficha ── -->
+  <aside class="panel-left" id="panel-left">
+    <!-- Collapse tab -->
+    <div class="collapse-tab" onclick="togglePanel('left')" id="collapse-left" title="Recolher ficha">◀</div>
+
+    <!-- Ficha Tabs -->
+    <div class="ficha-tabs">
+      <button class="ftab active" onclick="switchFichaTab('principal')">Principal</button>
+      <button class="ftab" onclick="switchFichaTab('hab')">Hab.</button>
+      <button class="ftab" onclick="switchFichaTab('magias')">Magias</button>
+      <button class="ftab" onclick="switchFichaTab('equip')">Equip.</button>
+    </div>
+
+    <!-- ficha-inner: autosave listener + tab contents -->
+    <div class="inner" id="ficha-inner">
+
+      <!-- ════ TAB: PRINCIPAL ════ -->
+      <div class="ftab-content active" id="ftab-principal">
+
+        <!-- Identidade -->
+        <div class="mb-sec-label">⚔ Identidade</div>
+        <div class="one-cell"><label>Personagem</label><input type="text" id="f-nome" placeholder="Nome do personagem"></div>
+        <div class="one-cell" style="margin-top:5px"><label>Jogador</label><input type="text" id="f-jogador" placeholder="Nome do jogador"></div>
+        <div class="two-cell" style="margin-top:5px">
+          <div class="one-cell"><label>Raça</label><input type="text" id="f-raca" placeholder="Raça"></div>
+          <div class="one-cell"><label>Classe</label><input type="text" id="f-classe" placeholder="Classe"></div>
+        </div>
+        <div class="two-cell" style="margin-top:5px">
+          <div class="one-cell"><label>Caminho</label><input type="text" id="f-caminho" placeholder="Caminho"></div>
+          <div class="one-cell"><label>Nível</label><input type="number" id="f-nivel" value="1" min="1" max="20"></div>
+        </div>
+        <div class="two-cell" style="margin-top:5px">
+          <div class="one-cell"><label>Antecedente</label><input type="text" id="f-antecedente" placeholder="Antecedente"></div>
+          <div class="one-cell"><label>Idade</label><input type="number" id="f-idade" value="18" min="1"></div>
+        </div>
+        <div style="margin-top:6px">
+          <div class="mb-sec-label" style="margin-bottom:5px">Experiência</div>
+          <div class="xp-wrap" id="xp-dots"></div>
+        </div>
+        <div class="one-cell" style="margin-top:5px"><label>Motivação</label><input type="text" id="f-motivacao" placeholder="Motivação do personagem"></div>
+
+        <!-- ═══ VIDA & MANA (logo abaixo da Identidade) ═══ -->
+        <div class="mb-sec-label" style="margin-top:10px">❤ Vida &amp; Mana</div>
+        <div class="resource-row">
+          <span class="resource-label" style="color:#c84040;width:38px;font-size:0.72rem">Vida</span>
+          <input class="resource-cur" type="number" id="f-pv" value="20" min="0" oninput="updateBar('pv')">
+          <span class="resource-sep">/</span>
+          <input class="resource-max" type="number" id="f-pvMax" value="20" min="1" oninput="updateBar('pv')">
+          <div class="resource-bar"><div class="resource-fill fill-pv" id="bar-pv" style="width:100%"></div></div>
+        </div>
+        <div class="resource-row" style="margin-top:5px">
+          <span class="resource-label" style="color:#4080c0;width:38px;font-size:0.72rem">Mana</span>
+          <input class="resource-cur" type="number" id="f-pm" value="10" min="0" oninput="updateBar('pm')">
+          <span class="resource-sep">/</span>
+          <input class="resource-max" type="number" id="f-pmMax" value="10" min="1" oninput="updateBar('pm')">
+          <div class="resource-bar"><div class="resource-fill fill-pm" id="bar-pm" style="width:100%"></div></div>
+        </div>
+
+        <!-- Atributos -->
+        <div class="mb-sec-label" style="margin-top:10px">◈ Atributos</div>
+
+        <!-- Força -->
+        <div class="mb-attr-block">
+          <div class="mb-attr-header">
+            <div class="mb-attr-total" id="total-forca">0</div>
+            <span class="mb-attr-name">Força</span>
+          </div>
+          <div class="mb-attr-subs">
+            <div class="mb-sub"><span class="mb-sub-label">Raça</span><input type="number" id="f-forca-raca" value="0" min="0" oninput="calcAttr('forca')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Cls</span><input type="number" id="f-forca-cls" value="0" min="0" oninput="calcAttr('forca')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Aprim</span><input type="number" id="f-forca-aprim" value="0" min="0" oninput="calcAttr('forca')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Hab</span><input type="number" id="f-forca-hab" value="0" min="0" oninput="calcAttr('forca')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Mag</span><input type="number" id="f-forca-mag" value="0" min="0" oninput="calcAttr('forca')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Extra</span><input type="number" id="f-forca-extra" value="0" min="0" oninput="calcAttr('forca')"></div>
+          </div>
+        </div>
+
+        <!-- Agilidade -->
+        <div class="mb-attr-block">
+          <div class="mb-attr-header">
+            <div class="mb-attr-total" id="total-agi">0</div>
+            <span class="mb-attr-name">Agilidade</span>
+          </div>
+          <div class="mb-attr-subs">
+            <div class="mb-sub"><span class="mb-sub-label">Raça</span><input type="number" id="f-agi-raca" value="0" min="0" oninput="calcAttr('agi')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Cls</span><input type="number" id="f-agi-cls" value="0" min="0" oninput="calcAttr('agi')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Aprim</span><input type="number" id="f-agi-aprim" value="0" min="0" oninput="calcAttr('agi')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Hab</span><input type="number" id="f-agi-hab" value="0" min="0" oninput="calcAttr('agi')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Mag</span><input type="number" id="f-agi-mag" value="0" min="0" oninput="calcAttr('agi')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Extra</span><input type="number" id="f-agi-extra" value="0" min="0" oninput="calcAttr('agi')"></div>
+          </div>
+        </div>
+
+        <!-- Inteligência -->
+        <div class="mb-attr-block">
+          <div class="mb-attr-header">
+            <div class="mb-attr-total" id="total-intel">0</div>
+            <span class="mb-attr-name">Inteligência</span>
+          </div>
+          <div class="mb-attr-subs">
+            <div class="mb-sub"><span class="mb-sub-label">Raça</span><input type="number" id="f-intel-raca" value="0" min="0" oninput="calcAttr('intel')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Cls</span><input type="number" id="f-intel-cls" value="0" min="0" oninput="calcAttr('intel')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Aprim</span><input type="number" id="f-intel-aprim" value="0" min="0" oninput="calcAttr('intel')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Hab</span><input type="number" id="f-intel-hab" value="0" min="0" oninput="calcAttr('intel')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Mag</span><input type="number" id="f-intel-mag" value="0" min="0" oninput="calcAttr('intel')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Extra</span><input type="number" id="f-intel-extra" value="0" min="0" oninput="calcAttr('intel')"></div>
+          </div>
+        </div>
+
+        <!-- Vontade -->
+        <div class="mb-attr-block">
+          <div class="mb-attr-header">
+            <div class="mb-attr-total" id="total-von">0</div>
+            <span class="mb-attr-name">Vontade</span>
+          </div>
+          <div class="mb-attr-subs">
+            <div class="mb-sub"><span class="mb-sub-label">Raça</span><input type="number" id="f-von-raca" value="0" min="0" oninput="calcAttr('von')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Cls</span><input type="number" id="f-von-cls" value="0" min="0" oninput="calcAttr('von')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Aprim</span><input type="number" id="f-von-aprim" value="0" min="0" oninput="calcAttr('von')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Hab</span><input type="number" id="f-von-hab" value="0" min="0" oninput="calcAttr('von')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Mag</span><input type="number" id="f-von-mag" value="0" min="0" oninput="calcAttr('von')"></div>
+            <div class="mb-sub"><span class="mb-sub-label">Extra</span><input type="number" id="f-von-extra" value="0" min="0" oninput="calcAttr('von')"></div>
+          </div>
+        </div>
+
+        <!-- Defesa -->
+        <div class="mb-sec-label" style="margin-top:8px">🛡 Defesa</div>
+        <div class="defesa-row">
+          <div class="defesa-cell"><label>Bloqueio</label><input type="number" id="f-bloqueio" value="5"></div>
+          <div class="defesa-cell"><label>Esquiva</label><input type="number" id="f-esquiva" value="5"></div>
+          <div class="defesa-cell"><label>Determinação</label><input type="number" id="f-determinacao" value="8"></div>
+        </div>
+
+        <!-- Proteção -->
+        <div class="mb-sec-label" style="margin-top:8px">🔰 Proteção</div>
+        <div class="mb-table-wrap">
+          <table class="mb-table">
+            <thead><tr>
+              <th style="width:48%">Item de Proteção</th>
+              <th style="width:30%">Tipo</th>
+              <th style="width:22%">Def</th>
+            </tr></thead>
+            <tbody>
+              <tr><td><input type="text" id="prot-0-item" placeholder="Armadura…"></td><td><input type="text" id="prot-0-tipo" placeholder="Armadura"></td><td><input type="number" id="prot-0-def" value="0"></td></tr>
+              <tr><td><input type="text" id="prot-1-item"></td><td><input type="text" id="prot-1-tipo" placeholder="Armadura"></td><td><input type="number" id="prot-1-def" value="0"></td></tr>
+              <tr><td><input type="text" id="prot-2-item"></td><td><input type="text" id="prot-2-tipo" placeholder="Escudo"></td><td><input type="number" id="prot-2-def" value="0"></td></tr>
+              <tr><td><input type="text" id="prot-3-item"></td><td><input type="text" id="prot-3-tipo" placeholder="Bloqueio"></td><td><input type="number" id="prot-3-def" value="0"></td></tr>
+              <tr><td><input type="text" id="prot-4-item"></td><td><input type="text" id="prot-4-tipo" placeholder="Esquiva"></td><td><input type="number" id="prot-4-def" value="0"></td></tr>
+              <tr><td><input type="text" id="prot-5-item"></td><td><input type="text" id="prot-5-tipo" placeholder="Determinação"></td><td><input type="number" id="prot-5-def" value="0"></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Deslocamento / Corrida -->
+        <div class="mb-sec-label" style="margin-top:8px">🏃 Movimento</div>
+        <div class="two-cell">
+          <div class="one-cell"><label>Deslocamento</label><input type="number" id="f-desl" value="9"></div>
+          <div class="one-cell"><label>Corrida</label><input type="number" id="f-corrida" value="0"></div>
+        </div>
+
+        <!-- Ataque -->
+        <div class="mb-sec-label" style="margin-top:8px">⚔ Ataque</div>
+        <div class="mb-table-wrap">
+          <table class="mb-table">
+            <thead><tr>
+              <th style="width:44%">Arma</th>
+              <th style="width:28%">Dano</th>
+              <th style="width:28%">Tipo</th>
+            </tr></thead>
+            <tbody>
+              <tr><td><input type="text" id="atk-0-arma"></td><td><input type="text" id="atk-0-dano" placeholder="1d6"></td><td><input type="text" id="atk-0-tipo"></td></tr>
+              <tr><td><input type="text" id="atk-1-arma"></td><td><input type="text" id="atk-1-dano"></td><td><input type="text" id="atk-1-tipo"></td></tr>
+              <tr><td><input type="text" id="atk-2-arma"></td><td><input type="text" id="atk-2-dano"></td><td><input type="text" id="atk-2-tipo"></td></tr>
+              <tr><td><input type="text" id="atk-3-arma"></td><td><input type="text" id="atk-3-dano"></td><td><input type="text" id="atk-3-tipo"></td></tr>
+              <tr><td><input type="text" id="atk-4-arma"></td><td><input type="text" id="atk-4-dano"></td><td><input type="text" id="atk-4-tipo"></td></tr>
+              <tr><td><input type="text" id="atk-5-arma"></td><td><input type="text" id="atk-5-dano"></td><td><input type="text" id="atk-5-tipo"></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Idiomas -->
+        <div class="mb-sec-label" style="margin-top:8px">🗣 Idiomas</div>
+        <div class="one-cell"><textarea id="f-idiomas" placeholder="Idiomas conhecidos…" rows="2"></textarea></div>
+
+        <!-- Recursos -->
+        <div class="mb-sec-label" style="margin-top:8px">💰 Recursos</div>
+        <div class="one-cell"><textarea id="f-recursos" placeholder="Ouro, prata, itens valiosos…" rows="3"></textarea></div>
+
+        <div class="save-indicator" id="save-indicator" style="margin-top:8px">Auto-salvo</div>
+
+      </div><!-- /ftab-principal -->
+
+      <!-- ════ TAB: HABILIDADES ════ -->
+      <div class="ftab-content" id="ftab-hab">
+        <div class="mb-sec-label">✦ Habilidades</div>
+        <div class="mb-dyn-wrap">
+          <table class="mb-dyn-table">
+            <thead><tr>
+              <th style="width:34%">Nome</th>
+              <th style="width:11%">Dif.</th>
+              <th style="width:11%">Mana</th>
+              <th>Descrição</th>
+              <th style="width:18px"></th>
+            </tr></thead>
+            <tbody id="hab-tbody"></tbody>
+          </table>
+        </div>
+        <button class="mb-add-btn" onclick="addHabRow()">+ Adicionar Habilidade</button>
+      </div>
+
+      <!-- ════ TAB: MAGIAS ════ -->
+      <div class="ftab-content" id="ftab-magias">
+        <div class="mb-sec-label">✨ Magias</div>
+        <div class="mb-dyn-wrap">
+          <table class="mb-dyn-table">
+            <thead><tr>
+              <th style="width:28%">Nome</th>
+              <th style="width:10%">Dif.</th>
+              <th style="width:10%">Mana</th>
+              <th style="width:12%">Custo</th>
+              <th>Descrição</th>
+              <th style="width:18px"></th>
+            </tr></thead>
+            <tbody id="mag-tbody"></tbody>
+          </table>
+        </div>
+        <button class="mb-add-btn" onclick="addMagRow()">+ Adicionar Magia</button>
+      </div>
+
+      <!-- ════ TAB: EQUIPAMENTO ════ -->
+      <div class="ftab-content" id="ftab-equip">
+        <div class="mb-sec-label">🎒 Equipamento</div>
+        <div class="mb-dyn-wrap">
+          <table class="mb-dyn-table">
+            <thead><tr>
+              <th style="width:50%">Item</th>
+              <th style="width:22%">Peso</th>
+              <th style="width:22%">Custo</th>
+              <th style="width:18px"></th>
+            </tr></thead>
+            <tbody id="equip-tbody"></tbody>
+          </table>
+        </div>
+        <button class="mb-add-btn" onclick="addEquipRow()">+ Adicionar Item</button>
+        <div class="mb-sec-label" style="margin-top:10px">⚖ Carga</div>
+        <div class="one-cell"><input type="text" id="f-carga" placeholder="Carga atual / máxima"></div>
+        <div class="mb-sec-label" style="margin-top:10px">📝 Anotações</div>
+        <div class="one-cell"><textarea id="f-anotacoes" placeholder="Notas livres, histórico, conexões…" rows="6"></textarea></div>
+      </div>
+
+    </div><!-- /ficha-inner -->
+  </aside>
+
+  <!-- ── MAPA CENTRAL ── -->
+  <main class="map-container" id="map-container"
+        oncontextmenu="return false"
+        onmousedown="mapMouseDown(event)"
+        onmousemove="mapMouseMove(event)"
+        onmouseup="mapMouseUp(event)"
+        onwheel="mapWheel(event)">
+    <div class="map-stage" id="map-stage">
+      <canvas id="grid-canvas" width="3000" height="3000"></canvas>
+      <div id="token-layer"></div>
+      <div class="fog-overlay" id="fog-overlay"></div>
+    </div>
+    <div class="map-info" id="map-info">Grade: 50px · Zoom: 100%</div>
+  </main>
+
+  <!-- ── PAINEL DIREITO — Chat / Dados / Iniciativa ── -->
+  <aside class="panel-right" id="panel-right">
+    <div class="collapse-tab collapse-tab-right" onclick="togglePanel('right')" id="collapse-right" title="Recolher painel">▶</div>
+
+    <!-- Abas -->
+    <div class="right-tabs">
+      <button class="rtab active" onclick="switchRTab('chat')">💬 Chat</button>
+      <button class="rtab" onclick="switchRTab('dice')">🎲 Dados</button>
+      <button class="rtab" onclick="switchRTab('init')">⚔ Turno</button>
+    </div>
+
+    <!-- Chat -->
+    <div class="rtab-content active" id="rtab-chat">
+      <div class="chat-log" id="chat-log"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="/r 2d6+3 · /me ação · mensagem…"
+               onkeydown="if(event.key==='Enter') sendChat()">
+        <button class="send-btn" onclick="sendChat()" title="Enviar">↵</button>
+      </div>
+    </div>
+
+    <!-- Dados -->
+    <div class="rtab-content" id="rtab-dice">
+      <div class="dice-panel">
+        <div class="dice-grid">
+          <button class="die-btn" onclick="quickRoll(4)">d4</button>
+          <button class="die-btn" onclick="quickRoll(6)">d6</button>
+          <button class="die-btn" onclick="quickRoll(8)">d8</button>
+          <button class="die-btn" onclick="quickRoll(10)">d10</button>
+          <button class="die-btn" onclick="quickRoll(12)">d12</button>
+          <button class="die-btn" onclick="quickRoll(20)">d20</button>
+          <button class="die-btn" onclick="quickRoll(100)" style="grid-column:span 2">d100 (percentual)</button>
+        </div>
+
+        <div class="custom-roll-row">
+          <input type="number" id="dice-qty" value="2" min="1" max="20" style="width:36px">
+          <span>d</span>
+          <input type="number" id="dice-type" value="6" min="2" max="100" style="width:36px">
+          <span>+</span>
+          <input type="number" id="dice-mod" value="0" style="width:36px">
+          <button class="roll-custom-btn" onclick="rollCustom()">Rolar</button>
+        </div>
+
+        <div class="dice-result-box" id="dice-result-box">
+          <div class="dice-result-total" id="dice-result-total">—</div>
+          <div class="dice-result-detail" id="dice-result-detail">Clique em um dado para rolar</div>
+        </div>
+
+        <!-- Rolagens rápidas de atributo MB (2d6 · clique para escolher modo) -->
+        <div style="padding:6px 0 2px; font-family:'Cinzel',serif; font-size:0.58rem; letter-spacing:0.2em; color:var(--dim); text-transform:uppercase;">Teste de Atributo <span style="opacity:0.5">(2d6 + total)</span></div>
+        <div class="dice-grid" style="grid-template-columns:repeat(2,1fr)">
+          <button class="die-btn" onclick="askRollMode('forca','Força',event)">Força</button>
+          <button class="die-btn" onclick="askRollMode('agi','Agilidade',event)">Agilidade</button>
+          <button class="die-btn" onclick="askRollMode('intel','Inteligência',event)">Inteligência</button>
+          <button class="die-btn" onclick="askRollMode('von','Vontade',event)">Vontade</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Iniciativa / Turno -->
+    <div class="rtab-content" id="rtab-init">
+      <div class="init-panel">
+        <div class="init-list" id="init-list"></div>
+        <div class="init-add-row">
+          <input type="text" class="init-name-in" id="init-name-in" placeholder="Nome">
+          <input type="number" class="init-num-in" id="init-val-in" placeholder="Ini" min="-10" max="99">
+          <button class="init-btn" onclick="addInitEntry()" title="Adicionar">+</button>
+        </div>
+        <div class="init-actions">
+          <button class="init-btn" onclick="sortInit()" title="Ordenar por iniciativa">↓ Ordenar</button>
+          <button class="init-btn next" onclick="nextTurn()">▶ Próximo</button>
+          <button class="init-btn" onclick="clearInit()" title="Limpar lista">✕</button>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+</div><!-- /mesa-body -->
+
+<!-- ═══════════════ MENU DE CONTEXTO ═══════════════ -->
+<div class="ctx-menu" id="ctx-menu" style="display:none"></div>
+
+<!-- ═══════════════ MODAL — Adicionar Token ═══════════════ -->
+<div class="modal-overlay" id="modal-token" style="display:none" onclick="if(event.target===this) closeModal('modal-token')">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modal-token')">✕</button>
+    <div class="modal-title">⚔ Adicionar Token</div>
+    <div class="ficha-field" style="margin-bottom:12px">
+      <label>Nome do Token</label>
+      <input type="text" id="tok-name" class="mb-input" placeholder="Ex: Goblin, Herói, Chefe…">
+    </div>
+    <div class="ficha-field" style="margin-bottom:12px">
+      <label>Emoji / Ícone</label>
+      <input type="text" id="tok-icon" class="mb-input" placeholder="🧙 👹 🐉 🗡 🛡" maxlength="4">
+    </div>
+    <div class="ficha-field" style="margin-bottom:12px">
+      <label>HP Atual / Máximo</label>
+      <div style="display:flex;gap:6px">
+        <input type="number" id="tok-hp" class="mb-input" value="10" min="0">
+        <span style="color:var(--dim);display:flex;align-items:center">/</span>
+        <input type="number" id="tok-hpmax" class="mb-input" value="10" min="1">
+      </div>
+    </div>
+    <div class="ficha-field" style="margin-bottom:16px">
+      <label>Cor do Token</label>
+      <div class="color-picker-row" id="color-picker"></div>
+    </div>
+    <button class="cta-btn" onclick="confirmAddToken()">✦ Adicionar ao Mapa</button>
+  </div>
+</div>
+
+<!-- ═══════════════ MODAL — Editar Token ═══════════════ -->
+<div class="modal-overlay" id="modal-edit-token" style="display:none" onclick="if(event.target===this) closeModal('modal-edit-token')">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modal-edit-token')">✕</button>
+    <div class="modal-title">✏ Editar Token</div>
+    <input type="hidden" id="edit-tok-id">
+    <div class="ficha-field" style="margin-bottom:12px">
+      <label>Nome</label>
+      <input type="text" id="edit-tok-name" class="mb-input">
+    </div>
+    <div class="ficha-field" style="margin-bottom:12px">
+      <label>HP Atual / Máximo</label>
+      <div style="display:flex;gap:6px">
+        <input type="number" id="edit-tok-hp" class="mb-input" min="0">
+        <span style="color:var(--dim);display:flex;align-items:center">/</span>
+        <input type="number" id="edit-tok-hpmax" class="mb-input" min="1">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="cta-btn" onclick="confirmEditToken()">✦ Salvar</button>
+      <button class="cta-btn danger sm" onclick="removeToken(document.getElementById('edit-tok-id').value); closeModal('modal-edit-token')">🗑 Remover</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════ SCRIPTS ═══════════════ -->
+<!-- Firebase SDK (compat mode) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<!-- Credenciais do Firebase -->
+<script src="firebase-config.js"></script>
+<script src="mb-state.js"></script>
+<!-- Animação 3D de dados -->
+<script src="mb-dice.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════════
+   ESTADO DA MESA
+══════════════════════════════════════════════════════════════ */
+let SESSION    = {};
+let MAP_DATA   = {};
+let CHAR_DATA  = {};
+let CHAR_ID    = 'char_default';
+let INIT_LIST  = [];
+let INIT_TURN  = 0;
+let ACTIVE_TOOL = 'select';
+let SELECTED_TOKEN = null;
+
+// Pan e drag
+let isPanning = false, panStartX = 0, panStartY = 0, panOfsX = 0, panOfsY = 0;
+let isDraggingToken = false, dragToken = null, dragOffX = 0, dragOffY = 0;
+
+// Context menu state
+let ctxMapX = 0, ctxMapY = 0, ctxTokenId = null;
+
+// Token sendo adicionado
+let pendingTokenPos = null;
+
+// Ficha de personagem
+const MB_ATTRS = ['forca','agi','intel','von'];
+const MB_SUBS  = ['raca','cls','aprim','hab','mag','extra'];
+let XP_VAL = 0;
+let saveTimer = null;
+
+// Cores disponíveis para tokens
+const TOKEN_COLORS = [
+  '#c84040','#40a0c8','#50b850','#c8a040','#9040c8',
+  '#c87040','#40c8b8','#c84090','#8090a0','#d4a843'
+];
+
+/* ══════════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════════ */
+(function init() {
+  const params = new URLSearchParams(window.location.search);
+  const code   = params.get('sala') || 'LOCAL';
+  const role   = params.get('role') || 'gm';
+  const name   = params.get('name') || (role === 'gm' ? 'Mestre' : 'Jogador');
+  const color  = params.get('color') || (role === 'gm' ? '#d4a843' : '#40a0c8');
+
+  SESSION = MBState.session.get();
+  if (!SESSION.code) {
+    SESSION = { code, role, name, color, campaign: 'Campanha' };
+    MBState.session.set(SESSION);
+  }
+
+  document.getElementById('camp-name').textContent = SESSION.campaign || code;
+  document.getElementById('room-badge').textContent = 'SALA: ' + SESSION.code;
+  const rb = document.getElementById('role-badge');
+  rb.textContent = SESSION.role === 'gm' ? 'GM' : SESSION.name;
+  if (SESSION.role !== 'gm') rb.classList.add('player');
+
+  // Carrega mapa e ficha
+  MAP_DATA  = MBState.map.get(SESSION.code);
+  CHAR_ID   = 'char_' + (SESSION.role === 'player' ? SESSION.name.replace(/\s/g,'_') : 'gm');
+  CHAR_DATA = MBState.char.get(CHAR_ID);
+  INIT_LIST = MBState.initiative.get(SESSION.code);
+
+  loadFicha();
+  renderGrid();
+  renderTokens();
+  renderInitList();
+  loadChatHistory();
+
+  // GM não tem ficha — esconde o painel esquerdo inteiro
+  if (SESSION.role === 'gm') {
+    const pl = document.getElementById('panel-left');
+    if (pl) pl.style.display = 'none';
+    const ct = document.getElementById('collapse-left');
+    if (ct) ct.style.display = 'none';
+  }
+
+  setupFichaAutosave();
+  setupColorPicker();
+
+  // Aplica fog e grid
+  document.getElementById('fog-overlay').style.display = MAP_DATA.fogActive ? 'block' : 'none';
+  document.getElementById('btn-fog').classList.toggle('on', MAP_DATA.fogActive);
+  document.getElementById('btn-grid').classList.toggle('on', MAP_DATA.showGrid);
+
+  // Pan inicial centrado
+  panOfsX = 0; panOfsY = 0;
+  applyPan();
+
+  updateMapInfo();
+  addSysMsg('⚔ Mesa carregada. Bem-vindo, ' + (SESSION.role==='gm'?'Mestre':SESSION.name) + '!');
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   FIREBASE SYNC EM TEMPO REAL
+   Recebe atualizações dos outros jogadores conectados na mesma sala
+══════════════════════════════════════════════════════════════ */
+(function setupFirebaseSync() {
+  const code = SESSION.code;
+  if (!code || code === 'LOCAL') return;
+
+  MBState.startSync(code, {
+
+    // Mapa atualizado por outro cliente (ex: GM moveu token)
+    onMapUpdate(data) {
+      MAP_DATA = { ...MAP_DATA, ...data };
+      renderTokens();
+      renderGrid();
+      document.getElementById('fog-overlay').style.display = MAP_DATA.fogActive ? 'block' : 'none';
+      document.getElementById('btn-fog').classList.toggle('on', MAP_DATA.fogActive);
+      document.getElementById('btn-grid').classList.toggle('on', MAP_DATA.showGrid);
+    },
+
+    // Nova mensagem de outro cliente no chat
+    onChatNew(entry) {
+      // Para rolagens: animação primeiro, resultado no chat após
+      if (entry.type === 'roll' && entry.ok && entry.rolls && entry.rolls.length > 0 && typeof DiceAnimator !== 'undefined') {
+        try {
+          DiceAnimator.roll(entry.rolls, entry.sides || 6, entry.author, function() { renderChatMsg(entry, true); });
+        } catch(e) {
+          console.warn('[MB] DiceAnimator erro (onChatNew):', e);
+          renderChatMsg(entry, true);
+        }
+      } else {
+        renderChatMsg(entry, true);
+      }
+    },
+
+    // Iniciativa atualizada por outro cliente
+    onInitUpdate(list) {
+      INIT_LIST = list;
+      renderInitList();
+    }
+
+  });
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════════════════════ */
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FERRAMENTAS
+══════════════════════════════════════════════════════════════ */
+function setTool(tool) {
+  ACTIVE_TOOL = tool;
+  document.querySelectorAll('#tool-select, #tool-move, #tool-addtoken').forEach(b => b.classList.remove('active'));
+  const el = document.getElementById('tool-' + tool);
+  if (el) el.classList.add('active');
+  document.getElementById('map-stage').style.cursor =
+    tool === 'move' ? 'grab' : tool === 'addtoken' ? 'cell' : 'crosshair';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GRADE (CANVAS)
+══════════════════════════════════════════════════════════════ */
+function renderGrid() {
+  const canvas = document.getElementById('grid-canvas');
+  const ctx    = canvas.getContext('2d');
+  const gs     = MAP_DATA.gridSize || 50;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = MAP_DATA.bgColor || '#1c1712';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (!MAP_DATA.showGrid) return;
+
+  ctx.strokeStyle = 'rgba(200,113,42,0.18)';
+  ctx.lineWidth = 0.8;
+
+  for (let x = 0; x <= canvas.width; x += gs) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y <= canvas.height; y += gs) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+}
+
+function toggleGrid() {
+  MAP_DATA.showGrid = !MAP_DATA.showGrid;
+  document.getElementById('btn-grid').classList.toggle('on', MAP_DATA.showGrid);
+  renderGrid();
+  saveMap();
+  updateMapInfo();
+}
+
+function toggleFog() {
+  MAP_DATA.fogActive = !MAP_DATA.fogActive;
+  document.getElementById('fog-overlay').style.display = MAP_DATA.fogActive ? 'block' : 'none';
+  document.getElementById('btn-fog').classList.toggle('on', MAP_DATA.fogActive);
+  saveMap();
+  showToast(MAP_DATA.fogActive ? '🌫 Névoa ativada' : '☀ Névoa desativada');
+}
+
+function openGridSettings() {
+  const val = prompt('Tamanho da célula da grade (px):', MAP_DATA.gridSize || 50);
+  if (val && !isNaN(val)) {
+    MAP_DATA.gridSize = Math.max(20, Math.min(200, parseInt(val)));
+    renderGrid();
+    renderTokens();
+    saveMap();
+    updateMapInfo();
+    showToast(`Grade: ${MAP_DATA.gridSize}px`);
+  }
+}
+
+function updateMapInfo() {
+  document.getElementById('map-info').textContent = `Grade: ${MAP_DATA.gridSize||50}px · ${MAP_DATA.showGrid?'Grade ligada':'Grade desligada'}`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PAN DO MAPA
+══════════════════════════════════════════════════════════════ */
+function applyPan() {
+  document.getElementById('map-stage').style.transform = `translate(${panOfsX}px, ${panOfsY}px)`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MOUSE EVENTS NO MAPA
+══════════════════════════════════════════════════════════════ */
+function mapMouseDown(e) {
+  closeCtxMenu();
+
+  // Clique do meio = pan sempre
+  if (e.button === 1) {
+    isPanning = true;
+    panStartX = e.clientX - panOfsX;
+    panStartY = e.clientY - panOfsY;
+    document.getElementById('map-stage').style.cursor = 'grabbing';
+    e.preventDefault(); return;
+  }
+
+  // Botão direito = context menu
+  if (e.button === 2) {
+    const [mx, my] = clientToMap(e.clientX, e.clientY);
+    ctxMapX = mx; ctxMapY = my; ctxTokenId = null;
+    showCtxMenu(e.clientX, e.clientY, 'map');
+    return;
+  }
+
+  // Move tool = pan com botão esquerdo
+  if (ACTIVE_TOOL === 'move') {
+    isPanning = true;
+    panStartX = e.clientX - panOfsX;
+    panStartY = e.clientY - panOfsY;
+    document.getElementById('map-stage').style.cursor = 'grabbing';
+    return;
+  }
+
+  // Add token tool
+  if (ACTIVE_TOOL === 'addtoken') {
+    const [mx, my] = clientToMap(e.clientX, e.clientY);
+    openAddToken(mx, my);
+    return;
+  }
+
+  // Select: click no vazio desseleciona
+  if (ACTIVE_TOOL === 'select') {
+    deselectToken();
+  }
+}
+
+function mapMouseMove(e) {
+  if (isPanning) {
+    panOfsX = e.clientX - panStartX;
+    panOfsY = e.clientY - panStartY;
+    applyPan();
+    return;
+  }
+  if (isDraggingToken && dragToken) {
+    const gs = MAP_DATA.gridSize || 50;
+    const [mx, my] = clientToMap(e.clientX, e.clientY);
+    let nx = mx + dragOffX;
+    let ny = my + dragOffY;
+    // Snap suave durante drag
+    dragToken.style.left = nx + 'px';
+    dragToken.style.top  = ny + 'px';
+    dragToken.style.transform = 'translate(-50%,-50%) scale(1.1)';
+  }
+}
+
+function mapMouseUp(e) {
+  if (isPanning) {
+    isPanning = false;
+    document.getElementById('map-stage').style.cursor = ACTIVE_TOOL === 'move' ? 'grab' : 'crosshair';
+  }
+  if (isDraggingToken && dragToken) {
+    const gs = MAP_DATA.gridSize || 50;
+    const tid = dragToken.dataset.id;
+    const token = MAP_DATA.tokens.find(t => t.id === tid);
+    if (token) {
+      // Snap para grade
+      token.x = Math.round(parseFloat(dragToken.style.left) / gs) * gs + gs / 2;
+      token.y = Math.round(parseFloat(dragToken.style.top)  / gs) * gs + gs / 2;
+      dragToken.style.left = token.x + 'px';
+      dragToken.style.top  = token.y + 'px';
+      dragToken.style.transform = 'translate(-50%,-50%) scale(1)';
+      saveMap();
+    }
+    isDraggingToken = false; dragToken = null;
+  }
+}
+
+function mapWheel(e) {
+  // Zoom futuro — por enquanto apenas pan vertical
+  e.preventDefault();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CONVERSÃO DE COORDENADAS
+══════════════════════════════════════════════════════════════ */
+function clientToMap(cx, cy) {
+  const rect = document.getElementById('map-container').getBoundingClientRect();
+  return [ cx - rect.left - panOfsX, cy - rect.top - panOfsY ];
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TOKENS
+══════════════════════════════════════════════════════════════ */
+
+function setupColorPicker() {
+  const cp = document.getElementById('color-picker');
+  TOKEN_COLORS.forEach((col, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'color-dot' + (i === 0 ? ' selected' : '');
+    dot.style.background = col;
+    dot.dataset.color = col;
+    dot.onclick = () => {
+      cp.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+      dot.classList.add('selected');
+    };
+    cp.appendChild(dot);
+  });
+}
+
+function openAddToken(mapX, mapY) {
+  pendingTokenPos = (mapX !== null) ? { x: mapX, y: mapY } : null;
+  document.getElementById('tok-name').value = '';
+  document.getElementById('tok-icon').value = '👤';
+  document.getElementById('tok-hp').value = '10';
+  document.getElementById('tok-hpmax').value = '10';
+  // Reset cor
+  document.querySelectorAll('#color-picker .color-dot').forEach((d, i) => d.classList.toggle('selected', i === 0));
+  openModal('modal-token');
+  setTimeout(() => document.getElementById('tok-name').focus(), 100);
+}
+
+function confirmAddToken() {
+  const name = document.getElementById('tok-name').value.trim() || 'Token';
+  const icon = document.getElementById('tok-icon').value.trim() || '👤';
+  const hp   = parseInt(document.getElementById('tok-hp').value) || 10;
+  const hpMax = parseInt(document.getElementById('tok-hpmax').value) || 10;
+  const colEl = document.querySelector('#color-picker .color-dot.selected');
+  const color = colEl ? colEl.dataset.color : TOKEN_COLORS[0];
+
+  const gs = MAP_DATA.gridSize || 50;
+  let px, py;
+  if (pendingTokenPos) {
+    px = Math.round(pendingTokenPos.x / gs) * gs + gs / 2;
+    py = Math.round(pendingTokenPos.y / gs) * gs + gs / 2;
+  } else {
+    // Centro do mapa visível
+    const cont = document.getElementById('map-container').getBoundingClientRect();
+    const [mx, my] = clientToMap(cont.left + cont.width / 2, cont.top + cont.height / 2);
+    px = Math.round(mx / gs) * gs + gs / 2;
+    py = Math.round(my / gs) * gs + gs / 2;
+  }
+
+  const token = { id: 'tok_' + Date.now(), name, icon, color, hp, hpMax, x: px, y: py, size: gs };
+  MAP_DATA.tokens.push(token);
+  createTokenEl(token);
+  saveMap();
+  closeModal('modal-token');
+  showToast(`✦ Token "${name}" adicionado`);
+}
+
+function renderTokens() {
+  const layer = document.getElementById('token-layer');
+  layer.innerHTML = '';
+  MAP_DATA.tokens.forEach(t => createTokenEl(t));
+}
+
+function createTokenEl(token) {
+  const gs = MAP_DATA.gridSize || 50;
+  const size = Math.round(gs * 0.85);
+
+  const el = document.createElement('div');
+  el.className = 'token';
+  el.dataset.id = token.id;
+  el.style.left = token.x + 'px';
+  el.style.top  = token.y + 'px';
+
+  const body = document.createElement('div');
+  body.className = 'token-body';
+  body.style.width  = size + 'px';
+  body.style.height = size + 'px';
+  body.style.background = token.color + '33';
+  body.style.borderColor = token.color;
+  body.style.boxShadow = `0 0 12px ${token.color}44, 0 2px 8px rgba(0,0,0,0.6)`;
+  body.textContent = token.icon || '👤';
+
+  const label = document.createElement('div');
+  label.className = 'token-label';
+  label.textContent = token.name;
+
+  const hpBar = document.createElement('div');
+  hpBar.className = 'token-hp-bar';
+  const hpFill = document.createElement('div');
+  hpFill.className = 'token-hp-fill';
+  hpFill.style.width = Math.max(0, Math.min(100, (token.hp / token.hpMax) * 100)) + '%';
+  hpFill.style.background = token.color;
+  hpBar.appendChild(hpFill);
+
+  el.appendChild(body);
+  el.appendChild(label);
+  el.appendChild(hpBar);
+
+  // Eventos
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
+  el.addEventListener('mousedown', e => {
+    if (e.button === 2) {
+      e.stopPropagation();
+      ctxTokenId = token.id;
+      showCtxMenu(e.clientX, e.clientY, 'token');
+      return;
+    }
+    e.stopPropagation();
+    selectToken(el, token.id);
+    if (ACTIVE_TOOL === 'select' || ACTIVE_TOOL === 'addtoken') {
+      // Drag start
+      isDraggingToken = true; dragToken = el;
+      const [mx, my] = clientToMap(e.clientX, e.clientY);
+      dragOffX = token.x - mx;
+      dragOffY = token.y - my;
+    }
+  });
+
+  document.getElementById('token-layer').appendChild(el);
+}
+
+function selectToken(el, id) {
+  deselectToken();
+  if (el) {
+    el.classList.add('selected');
+    SELECTED_TOKEN = id;
+  }
+}
+
+function deselectToken() {
+  document.querySelectorAll('.token.selected').forEach(t => t.classList.remove('selected'));
+  SELECTED_TOKEN = null;
+}
+
+function removeToken(id) {
+  MAP_DATA.tokens = MAP_DATA.tokens.filter(t => t.id !== id);
+  const el = document.querySelector(`.token[data-id="${id}"]`);
+  if (el) el.remove();
+  if (SELECTED_TOKEN === id) SELECTED_TOKEN = null;
+  saveMap();
+  showToast('🗑 Token removido');
+}
+
+function openEditToken(id) {
+  const token = MAP_DATA.tokens.find(t => t.id === id);
+  if (!token) return;
+  document.getElementById('edit-tok-id').value    = token.id;
+  document.getElementById('edit-tok-name').value  = token.name;
+  document.getElementById('edit-tok-hp').value    = token.hp;
+  document.getElementById('edit-tok-hpmax').value = token.hpMax;
+  openModal('modal-edit-token');
+}
+
+function confirmEditToken() {
+  const id = document.getElementById('edit-tok-id').value;
+  const token = MAP_DATA.tokens.find(t => t.id === id);
+  if (!token) return;
+  token.name  = document.getElementById('edit-tok-name').value.trim() || token.name;
+  token.hp    = parseInt(document.getElementById('edit-tok-hp').value) || 0;
+  token.hpMax = parseInt(document.getElementById('edit-tok-hpmax').value) || token.hpMax;
+  renderTokens();
+  saveMap();
+  closeModal('modal-edit-token');
+  showToast('✦ Token atualizado');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MENU DE CONTEXTO
+══════════════════════════════════════════════════════════════ */
+function showCtxMenu(cx, cy, type) {
+  const menu = document.getElementById('ctx-menu');
+  menu.innerHTML = '';
+
+  if (type === 'map') {
+    addCtxItem('👤 Adicionar Token aqui', () => openAddToken(ctxMapX, ctxMapY));
+    addCtxItem('▦ Alternar Grade', toggleGrid);
+    addCtxItem('🌫 Alternar Névoa', toggleFog);
+  }
+
+  if (type === 'token') {
+    const tok = MAP_DATA.tokens.find(t => t.id === ctxTokenId);
+    if (tok) {
+      const sep = document.createElement('div');
+      sep.style.cssText = 'padding:5px 14px 2px; font-family:Cinzel,serif; font-size:0.58rem; letter-spacing:0.12em; color:var(--ember);';
+      sep.textContent = tok.name.toUpperCase();
+      menu.appendChild(sep);
+    }
+    addCtxItem('✏ Editar Token', () => openEditToken(ctxTokenId));
+    addCtxItem('🗑 Remover Token', () => removeToken(ctxTokenId), true);
+  }
+
+  // Posicionar
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let x = cx, y = cy;
+  menu.style.display = 'block';
+  if (x + 180 > vw) x = vw - 185;
+  if (y + menu.offsetHeight > vh) y = vh - menu.offsetHeight - 5;
+  menu.style.left = x + 'px';
+  menu.style.top  = y + 'px';
+}
+
+function addCtxItem(label, fn, danger = false) {
+  const menu = document.getElementById('ctx-menu');
+  const item = document.createElement('div');
+  item.className = 'ctx-item' + (danger ? ' danger' : '');
+  item.textContent = label;
+  item.onclick = () => { fn(); closeCtxMenu(); };
+  menu.appendChild(item);
+}
+
+function closeCtxMenu() {
+  document.getElementById('ctx-menu').style.display = 'none';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SALVAMENTO
+══════════════════════════════════════════════════════════════ */
+function saveMap() {
+  MAP_DATA.panX = panOfsX;
+  MAP_DATA.panY = panOfsY;
+  MBState.map.save(SESSION.code, MAP_DATA);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CHAT
+══════════════════════════════════════════════════════════════ */
+function loadChatHistory() {
+  const log = MBState.chat.get(SESSION.code);
+  log.forEach(entry => renderChatMsg(entry, false));
+  scrollChat();
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const raw   = input.value.trim();
+  if (!raw) return;
+  input.value = '';
+
+  const author = SESSION.role === 'gm' ? 'Mestre' : SESSION.name;
+
+  // Comando de dado: /r <expr>
+  if (raw.match(/^\/r\s+/i)) {
+    const expr   = raw.replace(/^\/r\s+/i, '');
+    const result = Dice.parse(expr);
+    const entry  = {
+      type: 'roll', author,
+      expr, rolls: result.rolls, total: result.total, ok: result.ok,
+      error: result.error, role: SESSION.role, sides: result.sides
+    };
+    MBState.chat.add(SESSION.code, entry);
+    // Animação 3D/2D — resultado aparece no chat APÓS a animação terminar
+    if (result.ok && result.rolls.length > 0 && typeof DiceAnimator !== 'undefined') {
+      try {
+        DiceAnimator.roll(result.rolls, result.sides, author, function() { renderChatMsg(entry, true); });
+      } catch(e) {
+        console.warn('[MB] DiceAnimator erro:', e);
+        renderChatMsg(entry, true);
+      }
+    } else {
+      renderChatMsg(entry, true);
+    }
+    return;
+  }
+
+  // Ação: /me <texto>
+  if (raw.match(/^\/me\s+/i)) {
+    const text = raw.replace(/^\/me\s+/i, '');
+    const entry = { type: 'action', author, text, role: SESSION.role };
+    MBState.chat.add(SESSION.code, entry);
+    renderChatMsg(entry, true);
+    return;
+  }
+
+  // Mensagem normal
+  const entry = { type: 'msg', author, text: raw, role: SESSION.role };
+  MBState.chat.add(SESSION.code, entry);
+  renderChatMsg(entry, true);
+}
+
+function renderChatMsg(entry, scroll = true) {
+  const log = document.getElementById('chat-log');
+  const div = document.createElement('div');
+  const roleClass = entry.role === 'gm' ? 'gm' : 'player';
+
+  if (entry.type === 'roll') {
+    div.className = 'chat-msg roll';
+    const rollsStr = entry.rolls && entry.rolls.length ? `[${entry.rolls.join(', ')}]` : '';
+    div.innerHTML = `
+      <span class="chat-author">${entry.author} rolou ${entry.expr}</span>
+      <div class="roll-result">${entry.ok ? entry.total : '❌ ' + entry.error}</div>
+      ${rollsStr ? `<div class="roll-detail">${rollsStr}</div>` : ''}
+    `;
+  } else if (entry.type === 'action') {
+    div.className = 'chat-msg system';
+    div.innerHTML = `<em>★ ${entry.author} ${entry.text}</em>`;
+  } else if (entry.type === 'system') {
+    div.className = 'chat-msg system';
+    div.innerHTML = `<em>${entry.text}</em>`;
+  } else {
+    div.className = `chat-msg ${roleClass}`;
+    div.innerHTML = `<span class="chat-author">${entry.author}</span>${escHtml(entry.text)}`;
+  }
+
+  log.appendChild(div);
+  if (scroll) scrollChat();
+}
+
+function addSysMsg(text) {
+  const entry = { type: 'system', text };
+  renderChatMsg(entry, true);
+}
+
+function scrollChat() {
+  const log = document.getElementById('chat-log');
+  log.scrollTop = log.scrollHeight;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DADOS
+══════════════════════════════════════════════════════════════ */
+function quickRoll(sides) {
+  const result = Dice.parse('1d' + sides);
+  showDiceResult(result, '1d' + sides);
+  sendRollToChat('1d' + sides, result);
+}
+
+function rollCustom() {
+  const qty  = document.getElementById('dice-qty').value  || '1';
+  const type = document.getElementById('dice-type').value || '6';
+  const mod  = document.getElementById('dice-mod').value  || '0';
+  const modInt = parseInt(mod);
+  const expr = qty + 'd' + type + (modInt > 0 ? '+' + modInt : modInt < 0 ? String(modInt) : '');
+  const result = Dice.parse(expr);
+  showDiceResult(result, expr);
+  sendRollToChat(expr, result);
+}
+
+/* ── Popup Vantagem / Desvantagem ── */
+function askRollMode(attr, label, evt) {
+  closeRollModePopup();
+
+  const popup = document.createElement('div');
+  popup.className = 'roll-mode-popup';
+  popup.id = 'roll-mode-popup';
+  popup.innerHTML =
+    '<div class="roll-mode-title">Teste de ' + label + '</div>' +
+    '<button class="roll-mode-opt desv" onclick="doRollAttr(\'' + attr + '\',\'' + label + '\',\'desv\');closeRollModePopup()">' +
+      '<span class="rmo-dice">🎲</span><span class="rmo-label">Desvantagem</span><span class="rmo-tag">1d6</span>' +
+    '</button>' +
+    '<button class="roll-mode-opt norm" onclick="doRollAttr(\'' + attr + '\',\'' + label + '\',\'norm\');closeRollModePopup()">' +
+      '<span class="rmo-dice">🎲🎲</span><span class="rmo-label">Normal</span><span class="rmo-tag">2d6</span>' +
+    '</button>' +
+    '<button class="roll-mode-opt vant" onclick="doRollAttr(\'' + attr + '\',\'' + label + '\',\'vant\');closeRollModePopup()">' +
+      '<span class="rmo-dice">🎲🎲🎲</span><span class="rmo-label">Vantagem</span><span class="rmo-tag">3d6</span>' +
+    '</button>';
+
+  document.body.appendChild(popup);
+
+  // Posiciona próximo ao botão clicado
+  const btn = evt.currentTarget || evt.target;
+  const rect = btn.getBoundingClientRect();
+  let x = rect.left;
+  let y = rect.bottom + 6;
+  const pw = popup.offsetWidth  || 200;
+  const ph = popup.offsetHeight || 110;
+  if (x + pw > window.innerWidth)  x = window.innerWidth  - pw - 8;
+  if (y + ph > window.innerHeight) y = rect.top - ph - 6;
+  popup.style.left = Math.max(4, x) + 'px';
+  popup.style.top  = Math.max(4, y) + 'px';
+
+  // Fecha ao clicar fora
+  setTimeout(() => {
+    document.addEventListener('mousedown', _closePopupOutside);
+  }, 80);
+}
+
+function _closePopupOutside(e) {
+  const p = document.getElementById('roll-mode-popup');
+  if (p && !p.contains(e.target)) {
+    closeRollModePopup();
+    document.removeEventListener('mousedown', _closePopupOutside);
+  }
+}
+
+function closeRollModePopup() {
+  const p = document.getElementById('roll-mode-popup');
+  if (p) p.remove();
+  document.removeEventListener('mousedown', _closePopupOutside);
+}
+
+/* ── Executa rolagem MB (2d6 base) ── */
+function doRollAttr(attr, label, mode) {
+  const totalEl = document.getElementById('total-' + attr);
+  const val = totalEl ? (parseInt(totalEl.textContent) || 0) : 0;
+
+  let baseDice, modeSuffix;
+  switch (mode) {
+    case 'vant': baseDice = '3d6'; modeSuffix = ' ⬆ Vantagem';    break;
+    case 'desv': baseDice = '1d6'; modeSuffix = ' ⬇ Desvantagem'; break;
+    default:     baseDice = '2d6'; modeSuffix = '';                break;
+  }
+
+  const expr   = baseDice + (val > 0 ? '+' + val : val < 0 ? String(val) : '');
+  const result = Dice.parse(expr);
+  showDiceResult(result, 'Teste ' + label + modeSuffix + ' (' + expr + ')');
+  sendRollToChat('Teste ' + label + modeSuffix + ' — ' + expr, result);
+}
+
+/* ── Compatibilidade (chamada direta sem popup) ── */
+function rollAttr(attr, label) {
+  doRollAttr(attr, label, 'norm');
+}
+
+function showDiceResult(result, label) {
+  document.getElementById('dice-result-total').textContent = result.ok ? result.total : '❌';
+  const detail = result.rolls && result.rolls.length
+    ? `${label}: [${result.rolls.join(', ')}]`
+    : label;
+  document.getElementById('dice-result-detail').textContent = detail;
+
+  // Animação de brilho
+  const box = document.getElementById('dice-result-box');
+  box.style.borderColor = 'var(--ember)';
+  box.style.boxShadow   = '0 0 20px rgba(200,113,42,0.3)';
+  setTimeout(() => { box.style.borderColor = ''; box.style.boxShadow = ''; }, 600);
+}
+
+function sendRollToChat(expr, result) {
+  const author = SESSION.role === 'gm' ? 'Mestre' : SESSION.name;
+  const entry  = {
+    type: 'roll', author, expr,
+    rolls: result.rolls, total: result.total, ok: result.ok,
+    role: SESSION.role, sides: result.sides
+  };
+  MBState.chat.add(SESSION.code, entry);
+  // Animação 3D/2D — resultado aparece no chat APÓS a animação terminar
+  if (result.ok && result.rolls && result.rolls.length > 0 && typeof DiceAnimator !== 'undefined') {
+    try {
+      DiceAnimator.roll(result.rolls, result.sides, author, function() { renderChatMsg(entry, true); });
+    } catch(e) {
+      console.warn('[MB] DiceAnimator erro:', e);
+      renderChatMsg(entry, true);
+    }
+  } else {
+    renderChatMsg(entry, true);
+  }
+  // Não troca de aba — permanece na aba Dados
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INICIATIVA
+══════════════════════════════════════════════════════════════ */
+function addInitEntry() {
+  const name = document.getElementById('init-name-in').value.trim();
+  const val  = parseInt(document.getElementById('init-val-in').value);
+  if (!name) { showToast('Insira o nome.'); return; }
+  if (isNaN(val)) { showToast('Insira a iniciativa.'); return; }
+  INIT_LIST.push({ id: 'init_' + Date.now(), name, val });
+  document.getElementById('init-name-in').value = '';
+  document.getElementById('init-val-in').value  = '';
+  renderInitList();
+  MBState.initiative.save(SESSION.code, INIT_LIST);
+}
+
+function sortInit() {
+  INIT_LIST.sort((a, b) => b.val - a.val);
+  INIT_TURN = 0;
+  renderInitList();
+  MBState.initiative.save(SESSION.code, INIT_LIST);
+}
+
+function nextTurn() {
+  if (!INIT_LIST.length) return;
+  INIT_TURN = (INIT_TURN + 1) % INIT_LIST.length;
+  renderInitList();
+  const cur = INIT_LIST[INIT_TURN];
+  addSysMsg(`⚔ Turno de: ${cur.name}`);
+}
+
+function clearInit() {
+  INIT_LIST = []; INIT_TURN = 0;
+  renderInitList();
+  MBState.initiative.clear(SESSION.code);
+}
+
+function removeInitEntry(id) {
+  const idx = INIT_LIST.findIndex(e => e.id === id);
+  if (idx === -1) return;
+  INIT_LIST.splice(idx, 1);
+  if (INIT_TURN >= INIT_LIST.length) INIT_TURN = 0;
+  renderInitList();
+  MBState.initiative.save(SESSION.code, INIT_LIST);
+}
+
+function renderInitList() {
+  const list = document.getElementById('init-list');
+  list.innerHTML = '';
+  INIT_LIST.forEach((entry, idx) => {
+    const div = document.createElement('div');
+    div.className = 'init-entry' + (idx === INIT_TURN ? ' active-turn' : '');
+    div.innerHTML = `
+      <span class="init-num">${entry.val}</span>
+      <span class="init-name">${escHtml(entry.name)}</span>
+      ${idx === INIT_TURN ? '<span class="init-turn-marker">▶</span>' : ''}
+      <button class="init-del" onclick="removeInitEntry('${entry.id}')" title="Remover">✕</button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FICHA DE PERSONAGEM — MESA VIRTUAL
+══════════════════════════════════════════════════════════════ */
+
+/* ── XP Dots ── */
+function initXPDots() {
+  const wrap = document.getElementById('xp-dots');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  for (let i = 0; i < 10; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'xp-dot' + (i < XP_VAL ? ' filled' : '');
+    dot.title = (i + 1) + ' XP';
+    dot.onclick = () => { XP_VAL = (XP_VAL === i + 1) ? i : i + 1; initXPDots(); saveFicha(); };
+    wrap.appendChild(dot);
+  }
+}
+
+/* ── Calcula total de atributo MB ── */
+function calcAttr(attr) {
+  let total = 0;
+  MB_SUBS.forEach(sub => {
+    const el = document.getElementById('f-' + attr + '-' + sub);
+    if (el) total += parseInt(el.value) || 0;
+  });
+  const tot = document.getElementById('total-' + attr);
+  if (tot) tot.textContent = total;
+  return total;
+}
+
+/* ── Troca aba da ficha ── */
+function switchFichaTab(tab) {
+  document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ftab-content').forEach(c => c.classList.remove('active'));
+  const tabs = ['principal','hab','magias','equip'];
+  const idx  = tabs.indexOf(tab);
+  if (idx >= 0) document.querySelectorAll('.ftab')[idx].classList.add('active');
+  const panel = document.getElementById('ftab-' + tab);
+  if (panel) panel.classList.add('active');
+}
+
+/* ── Habilidades (linhas dinâmicas) ── */
+function addHabRow(data) {
+  data = data || {};
+  const tbody = document.getElementById('hab-tbody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input type="text" value="' + _esc(data.nome||'') + '" placeholder="Nome"></td>' +
+    '<td><input type="text" value="' + _esc(data.dif||'') + '" placeholder="—" style="text-align:center"></td>' +
+    '<td><input type="text" value="' + _esc(data.mana||'') + '" placeholder="—" style="text-align:center"></td>' +
+    '<td><input type="text" value="' + _esc(data.desc||'') + '" placeholder="Descrição…"></td>' +
+    '<td><button class="mb-row-del" onclick="this.closest(\'tr\').remove();saveFicha()" title="Remover">✕</button></td>';
+  tbody.appendChild(tr);
+}
+
+/* ── Magias (linhas dinâmicas) ── */
+function addMagRow(data) {
+  data = data || {};
+  const tbody = document.getElementById('mag-tbody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input type="text" value="' + _esc(data.nome||'') + '" placeholder="Nome"></td>' +
+    '<td><input type="text" value="' + _esc(data.dif||'') + '" placeholder="—" style="text-align:center"></td>' +
+    '<td><input type="text" value="' + _esc(data.mana||'') + '" placeholder="—" style="text-align:center"></td>' +
+    '<td><input type="text" value="' + _esc(data.custo||'') + '" placeholder="—" style="text-align:center"></td>' +
+    '<td><input type="text" value="' + _esc(data.desc||'') + '" placeholder="Descrição…"></td>' +
+    '<td><button class="mb-row-del" onclick="this.closest(\'tr\').remove();saveFicha()" title="Remover">✕</button></td>';
+  tbody.appendChild(tr);
+}
+
+/* ── Equipamentos (linhas dinâmicas) ── */
+function addEquipRow(data) {
+  data = data || {};
+  const tbody = document.getElementById('equip-tbody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input type="text" value="' + _esc(data.item||'') + '" placeholder="Item…"></td>' +
+    '<td><input type="text" value="' + _esc(data.peso||'') + '" placeholder="—" style="text-align:center"></td>' +
+    '<td><input type="text" value="' + _esc(data.custo||'') + '" placeholder="—" style="text-align:center"></td>' +
+    '<td><button class="mb-row-del" onclick="this.closest(\'tr\').remove();saveFicha()" title="Remover">✕</button></td>';
+  tbody.appendChild(tr);
+}
+
+function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+/* ── Carrega ficha ── */
+function loadFicha() {
+  const c = CHAR_DATA;
+
+  // Identidade (string)
+  ['nome','jogador','raca','classe','caminho','antecedente','motivacao','idiomas','recursos','anotacoes','carga'].forEach(k => {
+    const el = document.getElementById('f-' + k);
+    if (el && c[k] !== undefined) el.value = c[k];
+  });
+  // Identidade (number)
+  ['nivel','idade','pv','pvMax','pm','pmMax','bloqueio','esquiva','determinacao','desl','corrida'].forEach(k => {
+    const el = document.getElementById('f-' + k);
+    if (el && c[k] !== undefined) el.value = c[k];
+  });
+
+  // XP
+  XP_VAL = c.xp || 0;
+  initXPDots();
+
+  // Atributos MB
+  MB_ATTRS.forEach(attr => {
+    MB_SUBS.forEach(sub => {
+      const el = document.getElementById('f-' + attr + '-' + sub);
+      if (el && c[attr + '_' + sub] !== undefined) el.value = c[attr + '_' + sub];
+    });
+    calcAttr(attr);
+  });
+
+  // Barras
+  updateBar('pv');
+  updateBar('pm');
+
+  // Proteção (6 linhas)
+  for (let i = 0; i < 6; i++) {
+    ['item','tipo','def'].forEach(col => {
+      const el = document.getElementById('prot-' + i + '-' + col);
+      if (el && c['prot_' + i + '_' + col] !== undefined) el.value = c['prot_' + i + '_' + col];
+    });
+  }
+
+  // Ataques (6 linhas)
+  for (let i = 0; i < 6; i++) {
+    ['arma','dano','tipo'].forEach(col => {
+      const el = document.getElementById('atk-' + i + '-' + col);
+      if (el && c['atk_' + i + '_' + col] !== undefined) el.value = c['atk_' + i + '_' + col];
+    });
+  }
+
+  // Tabelas dinâmicas
+  document.getElementById('hab-tbody').innerHTML   = '';
+  (c.habilidades || []).forEach(row => addHabRow(row));
+  document.getElementById('mag-tbody').innerHTML   = '';
+  (c.magias      || []).forEach(row => addMagRow(row));
+  document.getElementById('equip-tbody').innerHTML = '';
+  (c.equipamentos|| []).forEach(row => addEquipRow(row));
+}
+
+/* ── Barra de recursos ── */
+function updateBar(res) {
+  const cur = parseInt(document.getElementById('f-' + res).value) || 0;
+  const max = parseInt(document.getElementById('f-' + res + 'Max').value) || 1;
+  const pct = Math.max(0, Math.min(100, (cur / max) * 100));
+  document.getElementById('bar-' + res).style.width = pct + '%';
+}
+
+/* ── Autosave ── */
+function setupFichaAutosave() {
+  const fichaEl = document.getElementById('ficha-inner');
+  fichaEl.addEventListener('input', e => {
+    // Recalcula total do atributo imediatamente ao digitar em sub-campos
+    if (e.target && e.target.id) {
+      const m = e.target.id.match(/^f-([a-z]+)-[a-z]+$/);
+      if (m && MB_ATTRS.includes(m[1])) calcAttr(m[1]);
+    }
+    // Também atualiza barra de PV/PM se o campo mudou
+    if (e.target && (e.target.id === 'f-pv' || e.target.id === 'f-pvMax')) updateBar('pv');
+    if (e.target && (e.target.id === 'f-pm' || e.target.id === 'f-pmMax')) updateBar('pm');
+
+    if (saveTimer) clearTimeout(saveTimer);
+    const ind = document.getElementById('save-indicator');
+    if (ind) { ind.textContent = 'Salvando…'; ind.classList.remove('saved'); }
+    saveTimer = setTimeout(saveFicha, 1200);
+  });
+  // Garante salvamento mesmo se o jogador fechar/navegar antes do debounce
+  window.addEventListener('beforeunload', () => { if (SESSION.role !== 'gm') saveFicha(); });
+}
+
+/* ── Salva ficha ── */
+function saveFicha() {
+  const c = CHAR_DATA;
+
+  ['nome','jogador','raca','classe','caminho','antecedente','motivacao','idiomas','recursos','anotacoes','carga'].forEach(k => {
+    const el = document.getElementById('f-' + k);
+    if (el) c[k] = el.value;
+  });
+  ['nivel','idade','pv','pvMax','pm','pmMax','bloqueio','esquiva','determinacao','desl','corrida'].forEach(k => {
+    const el = document.getElementById('f-' + k);
+    if (el) c[k] = parseFloat(el.value) || 0;
+  });
+
+  c.xp = XP_VAL;
+
+  MB_ATTRS.forEach(attr => {
+    MB_SUBS.forEach(sub => {
+      const el = document.getElementById('f-' + attr + '-' + sub);
+      if (el) c[attr + '_' + sub] = parseInt(el.value) || 0;
+    });
+  });
+
+  for (let i = 0; i < 6; i++) {
+    ['item','tipo'].forEach(col => {
+      const el = document.getElementById('prot-' + i + '-' + col);
+      if (el) c['prot_' + i + '_' + col] = el.value;
+    });
+    const defEl = document.getElementById('prot-' + i + '-def');
+    if (defEl) c['prot_' + i + '_def'] = parseFloat(defEl.value) || 0;
+  }
+  for (let i = 0; i < 6; i++) {
+    ['arma','dano','tipo'].forEach(col => {
+      const el = document.getElementById('atk-' + i + '-' + col);
+      if (el) c['atk_' + i + '_' + col] = el.value;
+    });
+  }
+
+  c.habilidades = [];
+  document.querySelectorAll('#hab-tbody tr').forEach(tr => {
+    const ins = tr.querySelectorAll('input');
+    c.habilidades.push({ nome: ins[0]?.value||'', dif: ins[1]?.value||'', mana: ins[2]?.value||'', desc: ins[3]?.value||'' });
+  });
+  c.magias = [];
+  document.querySelectorAll('#mag-tbody tr').forEach(tr => {
+    const ins = tr.querySelectorAll('input');
+    c.magias.push({ nome: ins[0]?.value||'', dif: ins[1]?.value||'', mana: ins[2]?.value||'', custo: ins[3]?.value||'', desc: ins[4]?.value||'' });
+  });
+  c.equipamentos = [];
+  document.querySelectorAll('#equip-tbody tr').forEach(tr => {
+    const ins = tr.querySelectorAll('input');
+    c.equipamentos.push({ item: ins[0]?.value||'', peso: ins[1]?.value||'', custo: ins[2]?.value||'' });
+  });
+
+  c.id = CHAR_ID;
+  MBState.char.save(c);
+
+  const ind = document.getElementById('save-indicator');
+  if (ind) {
+    ind.textContent = '✦ Salvo';
+    ind.classList.add('saved');
+    setTimeout(() => ind.classList.remove('saved'), 2000);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PAINÉIS COLLAPSE
+══════════════════════════════════════════════════════════════ */
+function togglePanel(side) {
+  const panel = document.getElementById('panel-' + side);
+  const tab   = document.getElementById('collapse-' + side);
+  const open  = !panel.classList.contains('collapsed');
+  panel.classList.toggle('collapsed', open);
+  if (side === 'left')  tab.textContent = open ? '▶' : '◀';
+  if (side === 'right') tab.textContent = open ? '◀' : '▶';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SEÇÕES DA FICHA
+══════════════════════════════════════════════════════════════ */
+function toggleSection(header) {
+  const body = header.nextElementSibling;
+  const icon = header.querySelector('span:last-child');
+  const collapsed = body.classList.toggle('collapsed');
+  if (icon) icon.textContent = collapsed ? '▸' : '▾';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ABAS DO PAINEL DIREITO
+══════════════════════════════════════════════════════════════ */
+function switchRTab(tab) {
+  document.querySelectorAll('.rtab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.rtab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.rtab:nth-child(${tab==='chat'?1:tab==='dice'?2:3})`).classList.add('active');
+  document.getElementById('rtab-' + tab).classList.add('active');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MODAIS
+══════════════════════════════════════════════════════════════ */
+function openModal(id) {
+  document.getElementById(id).style.display = 'flex';
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LOBBY
+══════════════════════════════════════════════════════════════ */
+function goLobby() {
+  saveFicha();
+  window.location.href = 'index.html';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ATALHOS DE TECLADO
+══════════════════════════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  // Ignora se estiver em um input/textarea
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+
+  switch(e.key.toLowerCase()) {
+    case 's': setTool('select'); break;
+    case 'm': setTool('move');   break;
+    case 't': openAddToken(null, null); break;
+    case 'g': toggleGrid(); break;
+    case 'f': toggleFog();  break;
+    case 'i': switchRTab('init'); break;
+    case 'd': switchRTab('dice'); break;
+    case 'c': switchRTab('chat'); break;
+    case 'delete':
+    case 'backspace':
+      if (SELECTED_TOKEN) { removeToken(SELECTED_TOKEN); } break;
+    case 'escape':
+      closeCtxMenu();
+      closeRollModePopup();
+      closeModal('modal-token');
+      closeModal('modal-edit-token');
+      deselectToken();
+      break;
+  }
+});
+
+/* Fecha ctx-menu ao clicar fora */
+document.addEventListener('mousedown', e => {
+  if (!e.target.closest('.ctx-menu')) closeCtxMenu();
+});
+
+/* ══ Bloqueia menu de contexto nativo do navegador em TODA a página ══
+   useCapture=true intercepta na fase de captura, antes de qualquer elemento */
+document.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  return false;
+}, true);
+</script>
+</body>
+</html>
