@@ -1510,6 +1510,14 @@ const TOKEN_COLORS = [
       ensurePlayerToken(_pid);
     }
 
+    // Botões exclusivos do mestre — oculta para players
+    if (role !== 'gm') {
+      const gmOnly = ['tool-addtoken', 'btn-bg-img', 'btn-fog', 'btn-grid'];
+      gmOnly.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+      // Também oculta separador da toolbar entre os botões de mapa
+      document.querySelectorAll('.tool-sep').forEach(sep => sep.style.display = 'none');
+    }
+
     setupFichaAutosave();
     setupColorPicker();
 
@@ -1572,7 +1580,18 @@ function renderGrid() {
       imgEl.src = MAP_DATA.bgImageURL;
     }
     if (_bgImageCache && _bgImageCache.img) {
-      ctx.drawImage(_bgImageCache.img, 0, 0, canvas.width, canvas.height);
+      const img = _bgImageCache.img;
+      const cw = canvas.width, ch = canvas.height;
+      const iw = img.naturalWidth  || img.width;
+      const ih = img.naturalHeight || img.height;
+      // "contain": escala uniforme para caber inteira sem distorcer
+      const scale = Math.min(cw / iw, ch / ih);
+      const dw = iw * scale, dh = ih * scale;
+      const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+      // Cor sólida nas bordas que sobram
+      ctx.fillStyle = MAP_DATA.bgColor || '#1c1712';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.drawImage(img, dx, dy, dw, dh);
     } else {
       ctx.fillStyle = MAP_DATA.bgColor || '#1c1712';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1637,6 +1656,7 @@ function updateMapInfo() {
 ══════════════════════════════════════════════════════════════ */
 
 function openBgImageModal() {
+  if (SESSION.role !== 'gm') return;
   document.getElementById('btn-remove-bg').style.display = MAP_DATA.bgImageURL ? '' : 'none';
   document.getElementById('bg-img-file').value = '';
   document.getElementById('bg-upload-progress').style.display = 'none';
@@ -1707,6 +1727,7 @@ function _compressBgImage(file, cb) {
 }
 
 function uploadBgImage(input) {
+  if (SESSION.role !== 'gm') return;
   const file = input.files[0];
   if (!file) return;
   const code = SESSION.code;
@@ -1761,7 +1782,7 @@ function setBgImage(dataUrl) {
 }
 
 function removeBgImage() {
-  delete MAP_DATA.bgImageURL;
+  MAP_DATA.bgImageURL = ''; // string vazia em vez de delete — Firebase envia '' para todos os clientes
   _bgImageCache = null;
   saveMap();
   renderGrid();
@@ -1771,6 +1792,7 @@ function removeBgImage() {
 }
 
 function deleteBgImage(key, dataUrl) {
+  if (SESSION.role !== 'gm') return;
   if (!confirm('Deletar esta imagem?\nEla será removida do banco de dados permanentemente.')) return;
   const code = SESSION.code;
   if (code && code !== 'LOCAL') {
@@ -1907,6 +1929,7 @@ function setupColorPicker() {
 }
 
 function openAddToken(mapX, mapY) {
+  if (SESSION.role !== 'gm') return;
   pendingTokenPos = (mapX !== null) ? { x: mapX, y: mapY } : null;
   _pendingAddTokenImg = undefined;
   document.getElementById('tok-name').value = '';
@@ -2046,6 +2069,7 @@ function deselectToken() {
 }
 
 function removeToken(id) {
+  if (SESSION.role !== 'gm') return;
   MAP_DATA.tokens = (MAP_DATA.tokens || []).filter(t => t.id !== id);
   const el = document.querySelector(`.token[data-id="${id}"]`);
   if (el) el.remove();
@@ -2097,24 +2121,32 @@ function confirmEditToken() {
 function showCtxMenu(cx, cy, type) {
   const menu = document.getElementById('ctx-menu');
   menu.innerHTML = '';
+  const isGM = SESSION.role === 'gm';
 
   if (type === 'map') {
-    addCtxItem('👤 Adicionar Token aqui', () => openAddToken(ctxMapX, ctxMapY));
-    addCtxItem('▦ Alternar Grade', toggleGrid);
-    addCtxItem('🌫 Alternar Névoa', toggleFog);
+    if (isGM) {
+      addCtxItem('👤 Adicionar Token aqui', () => openAddToken(ctxMapX, ctxMapY));
+      addCtxItem('▦ Alternar Grade', toggleGrid);
+      addCtxItem('🌫 Alternar Névoa', toggleFog);
+    }
   }
 
   if (type === 'token') {
-    const tok = MAP_DATA.tokens.find(t => t.id === ctxTokenId);
+    const tok = (MAP_DATA.tokens || []).find(t => t.id === ctxTokenId);
     if (tok) {
       const sep = document.createElement('div');
       sep.style.cssText = 'padding:5px 14px 2px; font-family:Cinzel,serif; font-size:0.58rem; letter-spacing:0.12em; color:var(--ember);';
       sep.textContent = tok.name.toUpperCase();
       menu.appendChild(sep);
     }
-    addCtxItem('✏ Editar Token', () => openEditToken(ctxTokenId));
-    addCtxItem('🗑 Remover Token', () => removeToken(ctxTokenId), true);
+    if (isGM) {
+      addCtxItem('✏ Editar Token', () => openEditToken(ctxTokenId));
+      addCtxItem('🗑 Remover Token', () => removeToken(ctxTokenId), true);
+    }
   }
+
+  // Se não tem nenhum item, não mostra o menu
+  if (menu.innerHTML === '' || menu.children.length === 0) return;
 
   // Posicionar
   const vw = window.innerWidth, vh = window.innerHeight;
