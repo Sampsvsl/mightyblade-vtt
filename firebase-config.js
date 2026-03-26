@@ -32,3 +32,19 @@ try {
 } catch(e) {
   console.error('[MB] Erro ao inicializar Firebase:', e.message);
 }
+
+// ─── REGRAS NECESSÁRIAS NO FIREBASE CONSOLE ────────────────────
+//
+// Realtime Database Rules (já existentes):
+//   { "rules": { ".read": "auth != null", ".write": "auth != null" } }
+//
+// Storage Rules (console.firebase.google.com → Storage → Rules):
+//   rules_version = '2';
+//   service firebase.storage {
+//     match /b/{bucket}/o {
+//       match /{allPaths=**} {
+//         allow read, write: if request.auth != null;
+//       }
+//     }
+//   }
+// ────────────────────────────────────────────────────────────────
