@@ -1065,7 +1065,7 @@ body { overflow: hidden; user-select: none; }
 
   <!-- ── MAPA CENTRAL ── -->
   <main class="map-container" id="map-container"
-        oncontextmenu="mapContextMenu(event)"
+        oncontextmenu="event.preventDefault()"
         onmousedown="mapMouseDown(event)"
         onmousemove="mapMouseMove(event)"
         onmouseup="mapMouseUp(event)"
@@ -1821,18 +1821,6 @@ function applyPan() {
 /* ══════════════════════════════════════════════════════════════
    MOUSE EVENTS NO MAPA
 ══════════════════════════════════════════════════════════════ */
-function mapContextMenu(e) {
-  e.preventDefault();
-  e.stopPropagation();
-  // Se foi um drag (>5px) não abre menu — foi pan, não clique
-  if (rightDragDist > 5) { rightDragDist = 0; return; }
-  rightDragDist = 0;
-  // Se o evento veio de um token, ele já se registrou — não abre o menu do mapa
-  if (e.target.closest('.token')) return;
-  const [mx, my] = clientToMap(e.clientX, e.clientY);
-  ctxMapX = mx; ctxMapY = my; ctxTokenId = null;
-  showCtxMenu(e.clientX, e.clientY, 'map');
-}
 
 function mapMouseDown(e) {
   closeCtxMenu();
@@ -2085,12 +2073,11 @@ function createTokenEl(token) {
   el.appendChild(hpBar);
 
   // Eventos
-  // contextmenu = clique direito (funciona em todos os OS, inclusive Linux)
-  el.addEventListener('contextmenu', e => {
-    e.preventDefault();
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
+  // Duplo clique = editar token (só GM)
+  el.addEventListener('dblclick', e => {
     e.stopPropagation();
-    ctxTokenId = token.id;
-    showCtxMenu(e.clientX, e.clientY, 'token');
+    if (SESSION.role === 'gm') openEditToken(token.id);
   });
   el.addEventListener('mousedown', e => {
     if (e.button === 2) return; // botão direito tratado via contextmenu
