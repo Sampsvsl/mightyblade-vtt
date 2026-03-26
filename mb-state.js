@@ -214,6 +214,24 @@ const MBState = {
         const r = _fbRef('mesas/' + code + '/map');
         if (r) r.set(data).catch(e => console.warn('[MB] Firebase map sync:', e));
       }
+    },
+
+    // Carrega mapa uma vez do Firebase; fallback para null (caller usa localStorage)
+    loadFromFirebase(code, cb) {
+      if (!code || code === 'LOCAL') { cb(null); return; }
+      const r = _fbRef('mesas/' + code + '/map');
+      if (!r) { cb(null); return; }
+      r.once('value', snap => {
+        const data = snap.val();
+        if (data) {
+          const merged = { ...this.default(), ...data };
+          if (merged.tokens && !Array.isArray(merged.tokens)) {
+            merged.tokens = Object.values(merged.tokens).filter(Boolean);
+          }
+          try { localStorage.setItem('mb_map_' + code, JSON.stringify(merged)); } catch(e) {}
+          cb(merged);
+        } else { cb(null); }
+      }).catch(() => cb(null));
     }
   },
 

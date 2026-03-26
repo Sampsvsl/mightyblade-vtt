@@ -381,7 +381,8 @@ body { overflow: hidden; user-select: none; }
 /* ── Tokens ── */
 .token {
   position: absolute; pointer-events: all; cursor: pointer; z-index: 10;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  /* O translate centra o CÍRCULO (token-body) no ponto x,y do mapa.
+     Label e hp-bar ficam absolutamente posicionados abaixo, fora do fluxo. */
   transform: translate(-50%, -50%);
 }
 .token-body {
@@ -389,20 +390,30 @@ body { overflow: hidden; user-select: none; }
   display: flex; align-items: center; justify-content: center;
   font-size: 1.2rem; transition: box-shadow 0.15s, border-color 0.15s;
   box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  overflow: hidden; /* necessário para imagens circulares */
+  position: relative;
+}
+.token-body img {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+  display: block; pointer-events: none;
 }
 .token.selected .token-body {
   border-color: var(--gold);
   box-shadow: 0 0 0 3px rgba(212,168,67,0.5), 0 2px 12px rgba(0,0,0,0.8);
 }
 .token-label {
+  position: absolute;
+  top: calc(100% + 3px); left: 50%; transform: translateX(-50%);
   font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.06em;
   color: #fff; text-shadow: 0 0 4px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,1);
-  white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: 90px; overflow: hidden; text-overflow: ellipsis;
   pointer-events: none;
 }
 .token-hp-bar {
-  width: 44px; height: 4px; background: rgba(0,0,0,0.5);
-  border-radius: 2px; overflow: hidden;
+  position: absolute;
+  top: calc(100% + 15px); left: 50%; transform: translateX(-50%);
+  width: 80%; min-width: 28px; max-width: 44px; height: 4px;
+  background: rgba(0,0,0,0.5); border-radius: 2px; overflow: hidden;
 }
 .token-hp-fill { height: 100%; background: #c84040; border-radius: 2px; transition: width 0.3s; }
 .token:hover .token-body { border-color: rgba(255,255,255,0.8); }
@@ -689,6 +700,18 @@ body { overflow: hidden; user-select: none; }
 }
 .ftab-add-ficha:hover { color: var(--gold); border-color: var(--ember); background: rgba(200,113,42,0.15); }
 
+/* Botão avatar do player no switcher */
+.ftab-avatar-btn {
+  width: 26px; height: 26px; flex-shrink: 0;
+  border-radius: 50%; border: 1px solid var(--border);
+  background: rgba(0,0,0,0.5); cursor: pointer;
+  font-size: 0.85rem; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, transform 0.15s;
+  overflow: hidden; padding: 0;
+}
+.ftab-avatar-btn:hover { border-color: var(--ember); transform: scale(1.08); }
+
 /* Wrapper para ficha tab + botão de deletar */
 .ftab-ficha-wrap {
   display: flex; align-items: center; position: relative; flex-shrink: 0;
@@ -750,6 +773,11 @@ body { overflow: hidden; user-select: none; }
 
     <!-- ── Fichas Switcher (companions, animal, etc.) ── -->
     <div class="fichas-switcher" id="fichas-switcher">
+      <!-- Botão avatar do token (visível só para jogadores) -->
+      <button class="ftab-avatar-btn" id="ftab-avatar-btn" onclick="openAvatarModal()" title="Foto do token — clique para alterar">
+        <img id="ftab-avatar-img" src="" alt="" style="display:none;width:100%;height:100%;border-radius:50%;object-fit:cover;">
+        <span id="ftab-avatar-ico">👤</span>
+      </button>
       <div class="fichas-tabs-row" id="fichas-tabs-row"></div>
       <button class="ftab-add-ficha" onclick="addNewFicha()" title="Nova Ficha (Companion / Animal)">＋</button>
     </div>
@@ -1153,6 +1181,43 @@ body { overflow: hidden; user-select: none; }
   </div>
 </div>
 
+<!-- ═══════════════ MODAL — Avatar do Token ═══════════════ -->
+<div class="modal-overlay" id="modal-avatar" style="display:none" onclick="if(event.target===this) closeModal('modal-avatar')">
+  <div class="modal-box" style="max-width:320px">
+    <button class="modal-close" onclick="closeModal('modal-avatar')">✕</button>
+    <div class="modal-title">📷 Foto do Token</div>
+    <div style="text-align:center; margin-bottom:14px; color:var(--dim); font-size:0.82rem; line-height:1.5">
+      Carregue qualquer imagem — o site vai cortar<br>em quadrado e ajustar ao tamanho do token.
+    </div>
+    <!-- Preview circular -->
+    <div style="display:flex;justify-content:center;margin-bottom:16px">
+      <div id="avatar-preview-wrap" style="
+        width:96px;height:96px;border-radius:50%;
+        border:2px solid var(--border-h);overflow:hidden;
+        display:flex;align-items:center;justify-content:center;
+        background:rgba(0,0,0,0.4);font-size:2.5rem;cursor:pointer;"
+        onclick="document.getElementById('avatar-file-input').click()"
+        title="Clique para escolher imagem">
+        <img id="avatar-preview-img" src="" style="display:none;width:100%;height:100%;object-fit:cover;">
+        <span id="avatar-preview-ico">👤</span>
+      </div>
+    </div>
+    <!-- Input file oculto -->
+    <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarFile(this)">
+    <button class="cta-btn" onclick="document.getElementById('avatar-file-input').click()" style="margin-bottom:8px">
+      📷 Escolher Imagem
+    </button>
+    <button class="cta-btn" id="avatar-save-btn" onclick="saveAvatar()" style="display:none">
+      ✦ Usar esta imagem
+    </button>
+    <button class="cta-btn danger sm" id="avatar-remove-btn" onclick="removeAvatar()" style="display:none;margin-top:6px">
+      🗑 Remover foto
+    </button>
+    <!-- Canvas oculto para processamento -->
+    <canvas id="avatar-canvas" style="display:none"></canvas>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -1294,6 +1359,17 @@ const TOKEN_COLORS = [
     } else {
       // Jogador: mostra switcher de fichas
       renderFichasSwitcher();
+
+      // Garante token do player no mapa (carrega mapa fresco do Firebase primeiro)
+      const _pid = SESSION.name.replace(/\s/g, '_');
+      MBState.map.loadFromFirebase(SESSION.code, freshMap => {
+        if (freshMap) {
+          MAP_DATA = freshMap;
+          renderGrid();
+          renderTokens();
+        }
+        ensurePlayerToken(_pid);
+      });
     }
 
     setupFichaAutosave();
@@ -1516,9 +1592,9 @@ function mapMouseUp(e) {
     const tid = dragToken.dataset.id;
     const token = MAP_DATA.tokens.find(t => t.id === tid);
     if (token) {
-      // Snap para grade
-      token.x = Math.round(parseFloat(dragToken.style.left) / gs) * gs + gs / 2;
-      token.y = Math.round(parseFloat(dragToken.style.top)  / gs) * gs + gs / 2;
+      // Snap para grade (Math.floor = célula correta, não a adjacente)
+      token.x = Math.floor(parseFloat(dragToken.style.left) / gs) * gs + gs / 2;
+      token.y = Math.floor(parseFloat(dragToken.style.top)  / gs) * gs + gs / 2;
       dragToken.style.left = token.x + 'px';
       dragToken.style.top  = token.y + 'px';
       dragToken.style.transform = 'translate(-50%,-50%) scale(1)';
@@ -1583,14 +1659,14 @@ function confirmAddToken() {
   const gs = MAP_DATA.gridSize || 50;
   let px, py;
   if (pendingTokenPos) {
-    px = Math.round(pendingTokenPos.x / gs) * gs + gs / 2;
-    py = Math.round(pendingTokenPos.y / gs) * gs + gs / 2;
+    px = Math.floor(pendingTokenPos.x / gs) * gs + gs / 2;
+    py = Math.floor(pendingTokenPos.y / gs) * gs + gs / 2;
   } else {
     // Centro do mapa visível
     const cont = document.getElementById('map-container').getBoundingClientRect();
     const [mx, my] = clientToMap(cont.left + cont.width / 2, cont.top + cont.height / 2);
-    px = Math.round(mx / gs) * gs + gs / 2;
-    py = Math.round(my / gs) * gs + gs / 2;
+    px = Math.floor(mx / gs) * gs + gs / 2;
+    py = Math.floor(my / gs) * gs + gs / 2;
   }
 
   const token = { id: 'tok_' + Date.now(), name, icon, color, hp, hpMax, x: px, y: py, size: gs };
@@ -1614,6 +1690,10 @@ function createTokenEl(token) {
   const el = document.createElement('div');
   el.className = 'token';
   el.dataset.id = token.id;
+  // O token div tem exatamente o tamanho do círculo.
+  // translate(-50%,-50%) vai centralizar o CÍRCULO no ponto (x,y) do mapa.
+  el.style.width  = size + 'px';
+  el.style.height = size + 'px';
   el.style.left = token.x + 'px';
   el.style.top  = token.y + 'px';
 
@@ -1621,10 +1701,19 @@ function createTokenEl(token) {
   body.className = 'token-body';
   body.style.width  = size + 'px';
   body.style.height = size + 'px';
-  body.style.background = token.color + '33';
+  body.style.background = token.imgSrc ? 'transparent' : token.color + '33';
   body.style.borderColor = token.color;
   body.style.boxShadow = `0 0 12px ${token.color}44, 0 2px 8px rgba(0,0,0,0.6)`;
-  body.textContent = token.icon || '👤';
+
+  // Mostra imagem ou emoji
+  if (token.imgSrc) {
+    const img = document.createElement('img');
+    img.src = token.imgSrc;
+    img.draggable = false;
+    body.appendChild(img);
+  } else {
+    body.textContent = token.icon || '👤';
+  }
 
   const label = document.createElement('div');
   label.className = 'token-label';
@@ -2201,6 +2290,9 @@ function loadFicha() {
   (c.magias      || []).forEach(row => addMagRow(row));
   document.getElementById('equip-tbody').innerHTML = '';
   (c.equipamentos|| []).forEach(row => addEquipRow(row));
+
+  // Atualiza mini-avatar no switcher (se for jogador)
+  if (SESSION.role !== 'gm') syncAvatarBtn();
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2305,6 +2397,213 @@ function addNewFicha() {
   loadFicha();
   renderFichasSwitcher();
   showToast('✦ Nova ficha criada: ' + label.trim());
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TOKEN DO JOGADOR — cria / atualiza automaticamente
+══════════════════════════════════════════════════════════════ */
+
+/* Garante que o jogador tem um token no mapa. Cria se não existir.
+   Se o avatar mudou, atualiza o token existente. */
+function ensurePlayerToken(pid) {
+  const tokenId = 'tok_player_' + pid;
+  const existing = MAP_DATA.tokens.find(t => t.id === tokenId);
+
+  if (existing) {
+    // Atualiza HP e avatar a partir da ficha salva
+    let changed = false;
+    if (CHAR_DATA.pv !== undefined && existing.hp !== CHAR_DATA.pv) {
+      existing.hp = CHAR_DATA.pv;
+      changed = true;
+    }
+    if (CHAR_DATA.pvMax !== undefined && existing.hpMax !== CHAR_DATA.pvMax) {
+      existing.hpMax = CHAR_DATA.pvMax;
+      changed = true;
+    }
+    if (CHAR_DATA.avatar !== undefined && existing.imgSrc !== CHAR_DATA.avatar) {
+      existing.imgSrc = CHAR_DATA.avatar || null;
+      changed = true;
+    }
+    if (changed) {
+      // Re-renderiza o token no DOM
+      const oldEl = document.querySelector(`.token[data-id="${tokenId}"]`);
+      if (oldEl) oldEl.remove();
+      createTokenEl(existing);
+      saveMap();
+    }
+    return;
+  }
+
+  // Primeira vez: cria token no centro do mapa visível
+  const gs = MAP_DATA.gridSize || 50;
+  const cont = document.getElementById('map-container').getBoundingClientRect();
+  const [mx, my] = clientToMap(cont.left + cont.width / 2, cont.top + cont.height / 2);
+  const px = Math.floor(mx / gs) * gs + gs / 2;
+  const py = Math.floor(my / gs) * gs + gs / 2;
+
+  const token = {
+    id:      tokenId,
+    name:    SESSION.name,
+    icon:    '👤',
+    color:   SESSION.color || '#40a0c8',
+    imgSrc:  CHAR_DATA.avatar || null,
+    hp:      CHAR_DATA.pv    || 20,
+    hpMax:   CHAR_DATA.pvMax || 20,
+    x: px, y: py,
+    size: gs,
+    playerId: pid
+  };
+
+  MAP_DATA.tokens.push(token);
+  createTokenEl(token);
+  saveMap();
+  showToast('✦ Seu token foi colocado no mapa!');
+}
+
+/* Atualiza imagem do token do player após upload de avatar */
+function applyAvatarToPlayerToken(pid, avatarBase64) {
+  const tokenId = 'tok_player_' + pid;
+  const token = MAP_DATA.tokens.find(t => t.id === tokenId);
+  if (!token) return;
+
+  token.imgSrc = avatarBase64 || null;
+  const oldEl = document.querySelector(`.token[data-id="${tokenId}"]`);
+  if (oldEl) oldEl.remove();
+  createTokenEl(token);
+  saveMap();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AVATAR DO PLAYER — Upload, crop e sincronização
+══════════════════════════════════════════════════════════════ */
+let _pendingAvatarBase64 = null;
+
+function openAvatarModal() {
+  _pendingAvatarBase64 = null;
+  // Mostra preview atual se houver
+  const hasAvatar = !!CHAR_DATA.avatar;
+  const previewImg = document.getElementById('avatar-preview-img');
+  const previewIco = document.getElementById('avatar-preview-ico');
+  const saveBtn    = document.getElementById('avatar-save-btn');
+  const removeBtn  = document.getElementById('avatar-remove-btn');
+
+  if (hasAvatar) {
+    previewImg.src = CHAR_DATA.avatar;
+    previewImg.style.display = 'block';
+    previewIco.style.display = 'none';
+    removeBtn.style.display = 'block';
+  } else {
+    previewImg.style.display = 'none';
+    previewIco.style.display = '';
+    removeBtn.style.display = 'none';
+  }
+  saveBtn.style.display = 'none';
+  document.getElementById('avatar-file-input').value = '';
+  openModal('modal-avatar');
+}
+
+/* Processa arquivo de imagem: lê, recorta em quadrado central, exporta como JPEG 128px */
+function handleAvatarFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const src = ev.target.result;
+    const img = new Image();
+    img.onload = () => {
+      // Recorte quadrado central
+      const side = Math.min(img.width, img.height);
+      const sx   = (img.width  - side) / 2;
+      const sy   = (img.height - side) / 2;
+      const OUT  = 128; // px de saída — bom balanço qualidade/tamanho
+
+      const canvas = document.getElementById('avatar-canvas');
+      canvas.width  = OUT;
+      canvas.height = OUT;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, OUT, OUT);
+
+      // Máscara circular
+      ctx.beginPath();
+      ctx.arc(OUT / 2, OUT / 2, OUT / 2, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, OUT, OUT);
+
+      // JPEG com qualidade 0.88 → ~8-15 KB para foto, < 5 KB para ícone
+      const base64 = canvas.toDataURL('image/jpeg', 0.88);
+      _pendingAvatarBase64 = base64;
+
+      // Atualiza preview
+      const previewImg = document.getElementById('avatar-preview-img');
+      const previewIco = document.getElementById('avatar-preview-ico');
+      previewImg.src = base64;
+      previewImg.style.display = 'block';
+      previewIco.style.display = 'none';
+
+      document.getElementById('avatar-save-btn').style.display = 'block';
+    };
+    img.src = src;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* Salva o avatar na ficha e no token */
+function saveAvatar() {
+  if (!_pendingAvatarBase64) return;
+
+  const pid = SESSION.name.replace(/\s/g, '_');
+  CHAR_DATA.avatar = _pendingAvatarBase64;
+  MBState.char.save(CHAR_DATA); // persiste na ficha (Firebase + localStorage)
+
+  // Atualiza botão de avatar no painel esquerdo
+  const btnImg = document.getElementById('ftab-avatar-img');
+  const btnIco = document.getElementById('ftab-avatar-ico');
+  if (btnImg && btnIco) {
+    btnImg.src = _pendingAvatarBase64;
+    btnImg.style.display = 'block';
+    btnIco.style.display = 'none';
+  }
+
+  applyAvatarToPlayerToken(pid, _pendingAvatarBase64);
+  closeModal('modal-avatar');
+  showToast('✦ Avatar do token atualizado!');
+}
+
+/* Remove o avatar da ficha e do token */
+function removeAvatar() {
+  if (!confirm('Remover a foto do token?')) return;
+  const pid = SESSION.name.replace(/\s/g, '_');
+  delete CHAR_DATA.avatar;
+  MBState.char.save(CHAR_DATA);
+
+  const btnImg = document.getElementById('ftab-avatar-img');
+  const btnIco = document.getElementById('ftab-avatar-ico');
+  if (btnImg && btnIco) {
+    btnImg.style.display = 'none';
+    btnIco.style.display = '';
+  }
+
+  applyAvatarToPlayerToken(pid, null);
+  closeModal('modal-avatar');
+  showToast('🗑 Avatar removido.');
+}
+
+/* Sincroniza o mini-avatar no botão do painel (chamado ao carregar a ficha) */
+function syncAvatarBtn() {
+  const btnImg = document.getElementById('ftab-avatar-img');
+  const btnIco = document.getElementById('ftab-avatar-ico');
+  if (!btnImg || !btnIco) return;
+  if (CHAR_DATA && CHAR_DATA.avatar) {
+    btnImg.src = CHAR_DATA.avatar;
+    btnImg.style.display = 'block';
+    btnIco.style.display = 'none';
+  } else {
+    btnImg.style.display = 'none';
+    btnIco.style.display = '';
+  }
 }
 
 /* Menu de contexto de uma ficha (clique direito → renomear) */
