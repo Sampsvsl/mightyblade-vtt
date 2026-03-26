@@ -1064,7 +1064,7 @@ body { overflow: hidden; user-select: none; }
 
   <!-- ── MAPA CENTRAL ── -->
   <main class="map-container" id="map-container"
-        oncontextmenu="return false"
+        oncontextmenu="mapContextMenu(event)"
         onmousedown="mapMouseDown(event)"
         onmousemove="mapMouseMove(event)"
         onmouseup="mapMouseUp(event)"
@@ -1813,6 +1813,16 @@ function applyPan() {
 /* ══════════════════════════════════════════════════════════════
    MOUSE EVENTS NO MAPA
 ══════════════════════════════════════════════════════════════ */
+function mapContextMenu(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  // Se o evento veio de um token, ele já se registrou — não abre o menu do mapa
+  if (e.target.closest('.token')) return;
+  const [mx, my] = clientToMap(e.clientX, e.clientY);
+  ctxMapX = mx; ctxMapY = my; ctxTokenId = null;
+  showCtxMenu(e.clientX, e.clientY, 'map');
+}
+
 function mapMouseDown(e) {
   closeCtxMenu();
 
@@ -1825,13 +1835,8 @@ function mapMouseDown(e) {
     e.preventDefault(); return;
   }
 
-  // Botão direito = context menu
-  if (e.button === 2) {
-    const [mx, my] = clientToMap(e.clientX, e.clientY);
-    ctxMapX = mx; ctxMapY = my; ctxTokenId = null;
-    showCtxMenu(e.clientX, e.clientY, 'map');
-    return;
-  }
+  // Botão direito agora tratado via oncontextmenu — ignora aqui
+  if (e.button === 2) return;
 
   // Move tool = pan com botão esquerdo
   if (ACTIVE_TOOL === 'move') {
@@ -2033,14 +2038,15 @@ function createTokenEl(token) {
   el.appendChild(hpBar);
 
   // Eventos
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
+  // contextmenu = clique direito (funciona em todos os OS, inclusive Linux)
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    ctxTokenId = token.id;
+    showCtxMenu(e.clientX, e.clientY, 'token');
+  });
   el.addEventListener('mousedown', e => {
-    if (e.button === 2) {
-      e.stopPropagation();
-      ctxTokenId = token.id;
-      showCtxMenu(e.clientX, e.clientY, 'token');
-      return;
-    }
+    if (e.button === 2) return; // botão direito tratado via contextmenu
     e.stopPropagation();
     selectToken(el, token.id);
     if (ACTIVE_TOOL === 'select' || ACTIVE_TOOL === 'addtoken') {
@@ -3209,13 +3215,12 @@ document.addEventListener('mousedown', e => {
   if (!e.target.closest('.ctx-menu')) closeCtxMenu();
 });
 
-/* ══ Bloqueia menu de contexto nativo do navegador em TODA a página ══
-   useCapture=true intercepta na fase de captura, antes de qualquer elemento */
+/* ══ Bloqueia menu nativo do navegador como fallback para qualquer elemento
+   que não tenha handler próprio. Sem useCapture para não interferir
+   nos handlers de token e mapa que já chamam e.preventDefault() ══ */
 document.addEventListener('contextmenu', e => {
   e.preventDefault();
-  e.stopPropagation();
-  return false;
-}, true);
+});
 </script>
 </body>
 </html>
