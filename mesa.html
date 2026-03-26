@@ -1247,7 +1247,7 @@ body { overflow: hidden; user-select: none; }
     <button class="modal-close" onclick="closeModal('modal-bg-image')">✕</button>
     <div class="modal-title">🖼 Imagens de Fundo do Mapa</div>
     <div style="margin-bottom:6px; color:var(--dim); font-size:0.8rem">
-      Recomendado: 1920×1080 JPG/PNG. A imagem é armazenada no Firebase Storage.
+      Qualquer resolução — o site comprime automaticamente para 1280px, ~100 KB. Salvo no banco de dados gratuito do Firebase.
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
       <label class="cta-btn sm" style="cursor:pointer;margin:0">
@@ -1307,7 +1307,6 @@ body { overflow: hidden; user-select: none; }
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <!-- Credenciais do Firebase -->
 <script src="firebase-config.js"></script>
 <script src="mb-state.js"></script>
@@ -1631,11 +1630,13 @@ function updateMapInfo() {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   IMAGEM DE FUNDO DO MAPA — Firebase Storage + Realtime DB
+   IMAGEM DE FUNDO DO MAPA — 100% Realtime Database (gratuito)
+   A imagem é comprimida no browser para ~1280px, JPEG 78%,
+   ficando entre 80-180 KB como base64 — cabe fácil no plano
+   gratuito do Firebase (1 GB de armazenamento no DB).
 ══════════════════════════════════════════════════════════════ */
 
 function openBgImageModal() {
-  // Mostra/oculta botão "remover fundo"
   document.getElementById('btn-remove-bg').style.display = MAP_DATA.bgImageURL ? '' : 'none';
   document.getElementById('bg-img-file').value = '';
   document.getElementById('bg-upload-progress').style.display = 'none';
@@ -1658,15 +1659,27 @@ function loadBgGallery() {
       gallery.innerHTML = '<div class="bg-empty-msg">Nenhuma imagem enviada ainda.</div>'; return;
     }
     Object.entries(data).forEach(([key, entry]) => {
-      const isActive = MAP_DATA.bgImageURL === entry.url;
+      const isActive = MAP_DATA.bgImageURL === entry.dataUrl;
       const wrap = document.createElement('div');
       wrap.className = 'bg-thumb' + (isActive ? ' active' : '');
-      wrap.innerHTML = `
-        <img src="${entry.url}" alt="${entry.name || 'fundo'}" loading="lazy">
-        <div class="bg-thumb-actions">
-          <button class="cta-btn sm" onclick="setBgImage('${entry.url}')">✦ Usar</button>
-          <button class="cta-btn sm danger" onclick="deleteBgImage('${key}','${entry.url}','${entry.storagePath||''}')">🗑 Deletar</button>
-        </div>`;
+      const img = document.createElement('img');
+      img.src = entry.dataUrl;
+      img.alt = entry.name || 'fundo';
+      img.loading = 'lazy';
+      const actions = document.createElement('div');
+      actions.className = 'bg-thumb-actions';
+      const useBtn = document.createElement('button');
+      useBtn.className = 'cta-btn sm';
+      useBtn.textContent = '✦ Usar';
+      useBtn.onclick = () => setBgImage(entry.dataUrl);
+      const delBtn = document.createElement('button');
+      delBtn.className = 'cta-btn sm danger';
+      delBtn.textContent = '🗑 Deletar';
+      delBtn.onclick = () => deleteBgImage(key, entry.dataUrl);
+      actions.appendChild(useBtn);
+      actions.appendChild(delBtn);
+      wrap.appendChild(img);
+      wrap.appendChild(actions);
       gallery.appendChild(wrap);
     });
   }).catch(() => {
@@ -1674,66 +1687,75 @@ function loadBgGallery() {
   });
 }
 
+/* Comprime a imagem para no máximo 1280px de largura, JPEG 78% */
+function _compressBgImage(file, cb) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX_W = 1280;
+      let w = img.width, h = img.height;
+      if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      cb(canvas.toDataURL('image/jpeg', 0.78));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function uploadBgImage(input) {
   const file = input.files[0];
   if (!file) return;
   const code = SESSION.code;
   if (!code || code === 'LOCAL') { showToast('⚠ Sem sala conectada.'); return; }
-  if (typeof firebase === 'undefined' || !firebase.storage) { showToast('⚠ Firebase Storage não disponível.'); return; }
-
-  const ts = Date.now();
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storagePath = 'mesas/' + code + '/backgrounds/' + ts + '-' + safeName;
 
   const progressWrap = document.getElementById('bg-upload-progress');
   const progressBar  = document.getElementById('bg-progress-bar');
   const statusEl     = document.getElementById('bg-upload-status');
   progressWrap.style.display = 'block';
+  progressBar.style.width = '30%';
   statusEl.style.display = 'block';
-  statusEl.textContent = 'Enviando…';
-  progressBar.style.width = '0%';
+  statusEl.textContent = 'Comprimindo imagem…';
 
-  const storageRef = firebase.storage().ref(storagePath);
-  const uploadTask = storageRef.put(file);
+  _compressBgImage(file, dataUrl => {
+    const sizeKB = Math.round(dataUrl.length * 0.75 / 1024);
+    progressBar.style.width = '70%';
+    statusEl.textContent = 'Salvando (' + sizeKB + ' KB)…';
 
-  uploadTask.on('state_changed',
-    snapshot => {
-      const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-      progressBar.style.width = pct + '%';
-      statusEl.textContent = 'Enviando… ' + pct + '%';
-    },
-    err => {
-      statusEl.textContent = '⚠ Erro: ' + err.message;
-      progressWrap.style.display = 'none';
-    },
-    () => {
-      uploadTask.snapshot.ref.getDownloadURL().then(url => {
-        // Salva referência no Realtime Database
-        const entry = { url, name: safeName, storagePath, uploadedAt: ts };
-        firebase.database().ref('mesas/' + code + '/bgImages/' + ts).set(entry).then(() => {
+    const ts = Date.now();
+    const name = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const entry = { dataUrl, name, uploadedAt: ts };
+
+    firebase.database().ref('mesas/' + code + '/bgImages/' + ts).set(entry)
+      .then(() => {
+        progressBar.style.width = '100%';
+        statusEl.textContent = '✦ Salvo! (' + sizeKB + ' KB)';
+        setTimeout(() => {
           progressWrap.style.display = 'none';
-          statusEl.textContent = '✦ Enviado!';
-          setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
-          input.value = '';
-          document.getElementById('btn-remove-bg').style.display = '';
-          loadBgGallery();
-          setBgImage(url); // Aplica automaticamente como fundo
-        });
+          statusEl.style.display = 'none';
+        }, 2000);
+        input.value = '';
+        loadBgGallery();
+        setBgImage(dataUrl);
+      })
+      .catch(err => {
+        statusEl.textContent = '⚠ Erro: ' + err.message;
+        progressWrap.style.display = 'none';
       });
-    }
-  );
+  });
 }
 
-function setBgImage(url) {
-  MAP_DATA.bgImageURL = url;
-  _bgImageCache = null; // força reload da imagem em cache
+function setBgImage(dataUrl) {
+  MAP_DATA.bgImageURL = dataUrl;
+  _bgImageCache = null;
   saveMap();
   renderGrid();
   document.getElementById('btn-remove-bg').style.display = '';
-  // Atualiza bordas ativas na galeria
   document.querySelectorAll('.bg-thumb').forEach(el => {
-    const img = el.querySelector('img');
-    el.classList.toggle('active', img && img.src === url);
+    el.classList.toggle('active', el.querySelector('img') && el.querySelector('img').src === dataUrl);
   });
   showToast('🖼 Fundo aplicado!');
 }
@@ -1748,19 +1770,13 @@ function removeBgImage() {
   showToast('✦ Fundo removido.');
 }
 
-function deleteBgImage(key, url, storagePath) {
-  if (!confirm('Deletar esta imagem do Firebase?\nEla será removida permanentemente do armazenamento.')) return;
+function deleteBgImage(key, dataUrl) {
+  if (!confirm('Deletar esta imagem?\nEla será removida do banco de dados permanentemente.')) return;
   const code = SESSION.code;
-  // Remove do Storage (se path disponível)
-  if (storagePath && typeof firebase !== 'undefined' && firebase.storage) {
-    firebase.storage().ref(storagePath).delete().catch(() => {}); // ignora erro se já deletado
-  }
-  // Remove do Realtime DB
   if (code && code !== 'LOCAL') {
     firebase.database().ref('mesas/' + code + '/bgImages/' + key).remove().catch(() => {});
   }
-  // Se era o fundo ativo, remove
-  if (MAP_DATA.bgImageURL === url) removeBgImage();
+  if (MAP_DATA.bgImageURL === dataUrl) removeBgImage();
   showToast('🗑 Imagem deletada.');
   loadBgGallery();
 }
