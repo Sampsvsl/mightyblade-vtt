@@ -95,6 +95,7 @@ body { overflow: hidden; user-select: none; }
 .map-stage {
   position: absolute; top: 0; left: 0;
   width: 3000px; height: 3000px;
+  transform-origin: 0 0;
   cursor: crosshair;
 }
 #grid-canvas {
@@ -1325,8 +1326,12 @@ let INIT_TURN  = 0;
 let ACTIVE_TOOL = 'select';
 let SELECTED_TOKEN = null;
 
-// Pan e drag
-let isPanning = false, panStartX = 0, panStartY = 0, panOfsX = 0, panOfsY = 0;
+// Pan, zoom e drag
+let isPanning       = false, panStartX = 0, panStartY = 0, panOfsX = 0, panOfsY = 0;
+let isRightPanning  = false; // pan com botão direito segurado
+let rightDragDist   = 0;     // distância percorrida no right-drag (para distinguir click de drag)
+let rightDragStartX = 0, rightDragStartY = 0;
+let mapScale        = 1.0;   // zoom atual (0.15 – 3.0)
 let isDraggingToken = false, dragToken = null, dragOffX = 0, dragOffY = 0;
 
 // Context menu state
@@ -1645,7 +1650,9 @@ function openGridSettings() {
 }
 
 function updateMapInfo() {
-  document.getElementById('map-info').textContent = `Grade: ${MAP_DATA.gridSize||50}px · ${MAP_DATA.showGrid?'Grade ligada':'Grade desligada'}`;
+  const pct = Math.round(mapScale * 100);
+  document.getElementById('map-info').textContent =
+    `Grade: ${MAP_DATA.gridSize||50}px · ${MAP_DATA.showGrid?'Grade ligada':'Grade desligada'} · Zoom: ${pct}%`;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1807,7 +1814,8 @@ function deleteBgImage(key, dataUrl) {
    PAN DO MAPA
 ══════════════════════════════════════════════════════════════ */
 function applyPan() {
-  document.getElementById('map-stage').style.transform = `translate(${panOfsX}px, ${panOfsY}px)`;
+  document.getElementById('map-stage').style.transform =
+    `translate(${panOfsX}px, ${panOfsY}px) scale(${mapScale})`;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1816,6 +1824,9 @@ function applyPan() {
 function mapContextMenu(e) {
   e.preventDefault();
   e.stopPropagation();
+  // Se foi um drag (>5px) não abre menu — foi pan, não clique
+  if (rightDragDist > 5) { rightDragDist = 0; return; }
+  rightDragDist = 0;
   // Se o evento veio de um token, ele já se registrou — não abre o menu do mapa
   if (e.target.closest('.token')) return;
   const [mx, my] = clientToMap(e.clientX, e.clientY);
@@ -1835,8 +1846,18 @@ function mapMouseDown(e) {
     e.preventDefault(); return;
   }
 
-  // Botão direito agora tratado via oncontextmenu — ignora aqui
-  if (e.button === 2) return;
+  // Botão direito: inicia pan (drag) — contextmenu cuida do click sem arrastar
+  if (e.button === 2) {
+    isRightPanning  = true;
+    panStartX       = e.clientX - panOfsX;
+    panStartY       = e.clientY - panOfsY;
+    rightDragStartX = e.clientX;
+    rightDragStartY = e.clientY;
+    rightDragDist   = 0;
+    document.getElementById('map-stage').style.cursor = 'grabbing';
+    e.preventDefault();
+    return;
+  }
 
   // Move tool = pan com botão esquerdo
   if (ACTIVE_TOOL === 'move') {
@@ -1861,10 +1882,15 @@ function mapMouseDown(e) {
 }
 
 function mapMouseMove(e) {
-  if (isPanning) {
+  if (isPanning || isRightPanning) {
     panOfsX = e.clientX - panStartX;
     panOfsY = e.clientY - panStartY;
     applyPan();
+    if (isRightPanning) {
+      const dx = e.clientX - rightDragStartX;
+      const dy = e.clientY - rightDragStartY;
+      rightDragDist = Math.sqrt(dx * dx + dy * dy);
+    }
     return;
   }
   if (isDraggingToken && dragToken) {
@@ -1882,6 +1908,10 @@ function mapMouseMove(e) {
 function mapMouseUp(e) {
   if (isPanning) {
     isPanning = false;
+    document.getElementById('map-stage').style.cursor = ACTIVE_TOOL === 'move' ? 'grab' : 'crosshair';
+  }
+  if (isRightPanning) {
+    isRightPanning = false;
     document.getElementById('map-stage').style.cursor = ACTIVE_TOOL === 'move' ? 'grab' : 'crosshair';
   }
   if (isDraggingToken && dragToken) {
@@ -1902,8 +1932,22 @@ function mapMouseUp(e) {
 }
 
 function mapWheel(e) {
-  // Zoom futuro — por enquanto apenas pan vertical
   e.preventDefault();
+  const MIN_SCALE = 0.15, MAX_SCALE = 3.0;
+  const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1; // scroll up = zoom in
+  const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, mapScale * factor));
+  if (newScale === mapScale) return;
+
+  // Mantém o ponto sob o cursor fixo no mapa após o zoom
+  const rect = document.getElementById('map-container').getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  panOfsX = cx - (cx - panOfsX) * (newScale / mapScale);
+  panOfsY = cy - (cy - panOfsY) * (newScale / mapScale);
+
+  mapScale = newScale;
+  applyPan();
+  updateMapInfo();
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1911,7 +1955,10 @@ function mapWheel(e) {
 ══════════════════════════════════════════════════════════════ */
 function clientToMap(cx, cy) {
   const rect = document.getElementById('map-container').getBoundingClientRect();
-  return [ cx - rect.left - panOfsX, cy - rect.top - panOfsY ];
+  return [
+    (cx - rect.left - panOfsX) / mapScale,
+    (cy - rect.top  - panOfsY) / mapScale
+  ];
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -3213,6 +3260,15 @@ document.addEventListener('keydown', e => {
 /* Fecha ctx-menu ao clicar fora */
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('.ctx-menu')) closeCtxMenu();
+});
+
+/* Encerra right-pan se o mouse soltar fora do mapa */
+document.addEventListener('mouseup', e => {
+  if (e.button === 2 && isRightPanning) {
+    isRightPanning = false;
+    const stage = document.getElementById('map-stage');
+    if (stage) stage.style.cursor = ACTIVE_TOOL === 'move' ? 'grab' : 'crosshair';
+  }
 });
 
 /* ══ Bloqueia menu nativo do navegador como fallback para qualquer elemento
