@@ -1271,76 +1271,131 @@ const TOKEN_COLORS = [
 ];
 
 /* ══════════════════════════════════════════════════════════════
-   INIT
+   BOOT — Inicialização completa (aguarda Firebase Auth)
+   Todos os listeners Firebase são criados DEPOIS que o auth
+   está pronto, garantindo que as regras auth!=null passem.
 ══════════════════════════════════════════════════════════════ */
-(function init() {
+(function bootMesa() {
   const params = new URLSearchParams(window.location.search);
   const code   = params.get('sala') || 'LOCAL';
   const role   = params.get('role') || 'gm';
   const name   = params.get('name') || (role === 'gm' ? 'Mestre' : 'Jogador');
   const color  = params.get('color') || (role === 'gm' ? '#d4a843' : '#40a0c8');
 
-  // Sempre reconstrói SESSION a partir dos params da URL
   SESSION = { code, role, name, color, campaign: 'Campanha' };
   MBState.session.set(SESSION);
 
   document.getElementById('camp-name').textContent = SESSION.campaign || code;
   document.getElementById('room-badge').textContent = 'SALA: ' + SESSION.code;
   const rb = document.getElementById('role-badge');
-  rb.textContent = SESSION.role === 'gm' ? 'GM' : SESSION.name;
-  if (SESSION.role !== 'gm') rb.classList.add('player');
+  rb.textContent = role === 'gm' ? 'GM' : name;
+  if (role !== 'gm') rb.classList.add('player');
 
-  // Carrega mapa e iniciativa (sempre do localStorage — síncrono)
-  MAP_DATA  = MBState.map.get(SESSION.code);
-  INIT_LIST = MBState.initiative.get(SESSION.code);
+  // Carrega estado inicial do localStorage (síncrono — sem Firebase)
+  MAP_DATA  = MBState.map.get(code);
+  INIT_LIST = MBState.initiative.get(code);
 
-  // ── GM: sem ficha, inicializa tudo sincronamente ──
-  if (SESSION.role === 'gm') {
-    CHAR_ID   = 'char_gm';
-    CHAR_DATA = MBState.char.get(CHAR_ID);
-    finalizarInit(false);
-    return;
-  }
+  // ── Aguarda Firebase Auth estar COMPLETAMENTE restaurado ──
+  // Sem isso, os listeners on() recebem PERMISSION_DENIED silencioso
+  function afterAuth() {
+    // Inicia sync EM TEMPO REAL (chat, tokens, mapa, iniciativa)
+    if (code && code !== 'LOCAL') {
+      MBState.startSync(code, {
 
-  // ── Jogador: carrega lista de fichas do Firebase (assíncrono) ──
-  const pid = SESSION.name.replace(/\s/g, '_');
-  CHAR_ID = 'char_' + pid;
+        // Configurações do mapa (grade, névoa, fundo) — SEM tokens
+        onMapUpdate(settings) {
+          const { tokens: _t, ...s } = settings; // ignora tokens se vier no path antigo
+          MAP_DATA = { ...MAP_DATA, ...s };
+          renderGrid();
+          document.getElementById('fog-overlay').style.display = MAP_DATA.fogActive ? 'block' : 'none';
+          document.getElementById('btn-fog').classList.toggle('on', MAP_DATA.fogActive);
+          document.getElementById('btn-grid').classList.toggle('on', MAP_DATA.showGrid);
+        },
 
-  function doPlayerLoad() {
+        // Tokens sincronizados de forma atômica (path separado)
+        onTokensUpdate(list) {
+          MAP_DATA.tokens = list;
+          renderTokens();
+        },
+
+        // Nova mensagem / rolagem de outro cliente
+        onChatNew(entry) {
+          if (entry.type === 'roll' && entry.ok && entry.rolls && entry.rolls.length > 0 && typeof DiceAnimator !== 'undefined') {
+            try {
+              DiceAnimator.roll(entry.rolls, entry.sides || 6, entry.author, () => renderChatMsg(entry, true));
+            } catch(e) { renderChatMsg(entry, true); }
+          } else {
+            renderChatMsg(entry, true);
+          }
+        },
+
+        // Iniciativa
+        onInitUpdate(list) { INIT_LIST = list; renderInitList(); }
+      });
+    }
+
+    // ── GM: carrega dados e finaliza ──
+    if (role === 'gm') {
+      CHAR_ID   = 'char_gm';
+      CHAR_DATA = MBState.char.get(CHAR_ID);
+      // Carrega mapa e tokens frescos do Firebase
+      MBState.map.loadFromFirebase(code, freshSettings => {
+        if (freshSettings) {
+          MAP_DATA = { ...MAP_DATA, ...freshSettings };
+          renderGrid();
+        }
+        MBState.tokens.loadFromFirebase(code, tokens => {
+          MAP_DATA.tokens = tokens;
+          renderTokens();
+          finalizarInit(false);
+        });
+      });
+      return;
+    }
+
+    // ── Jogador: carrega fichas + mapa + tokens do Firebase ──
+    const pid = name.replace(/\s/g, '_');
+    CHAR_ID = 'char_' + pid;
+
     MBState.charList.loadFromFirebase(code, pid, fichasList => {
       if (fichasList.length === 0) {
-        // Primeira vez: cria entrada inicial
-        ALL_FICHAS = [{ id: CHAR_ID, label: SESSION.name || 'Principal' }];
+        ALL_FICHAS = [{ id: CHAR_ID, label: name || 'Principal' }];
         MBState.charList.save(code, pid, ALL_FICHAS);
       } else {
         ALL_FICHAS = fichasList;
-        CHAR_ID = ALL_FICHAS[0].id; // usa a ficha principal
+        CHAR_ID = ALL_FICHAS[0].id;
       }
 
-      // Tenta carregar dados da ficha do Firebase; fallback para localStorage
       MBState.char.loadFromFirebase(code, CHAR_ID, fbData => {
         CHAR_DATA = fbData || MBState.char.get(CHAR_ID);
-        finalizarInit(true);
+
+        MBState.map.loadFromFirebase(code, freshSettings => {
+          if (freshSettings) MAP_DATA = { ...MAP_DATA, ...freshSettings };
+          MBState.tokens.loadFromFirebase(code, tokens => {
+            MAP_DATA.tokens = tokens;
+            finalizarInit(true);
+          });
+        });
       });
     });
   }
 
-  // ⚠ CRÍTICO: espera Firebase Auth restaurar estado (async no reload de página)
-  // Se não aguardar, auth.currentUser === null e todas as escritas são bloqueadas pelas rules
+  // ── Espera auth (GM já logado, player pode precisar de anon login) ──
   if (typeof firebase !== 'undefined') {
     const _unsub = firebase.auth().onAuthStateChanged(user => {
-      _unsub(); // dispara só uma vez
+      _unsub();
       if (user) {
-        doPlayerLoad();
-      } else {
-        // Nenhum usuário → faz login anônimo e então carrega
+        afterAuth();
+      } else if (role !== 'gm') {
         firebase.auth().signInAnonymously()
-          .then(() => doPlayerLoad())
-          .catch(() => doPlayerLoad()); // mesmo se falhar, tenta (modo offline)
+          .then(() => afterAuth())
+          .catch(() => afterAuth());
+      } else {
+        afterAuth(); // GM sem auth — modo offline
       }
     });
   } else {
-    doPlayerLoad(); // Firebase não disponível — usa localStorage
+    afterAuth();
   }
 
   function finalizarInit(isPlayer) {
@@ -1350,27 +1405,14 @@ const TOKEN_COLORS = [
     renderInitList();
     loadChatHistory();
 
-    if (!isPlayer) {
-      // GM: esconde painel de ficha
-      const pl = document.getElementById('panel-left');
-      if (pl) pl.style.display = 'none';
-      const ct = document.getElementById('collapse-left');
-      if (ct) ct.style.display = 'none';
-    } else {
-      // Jogador: mostra switcher de fichas
+    // Ficha no painel esquerdo: disponível para TODOS (GM e players)
+    if (isPlayer) {
+      // Player: mostra switcher e cria token automático
       renderFichasSwitcher();
-
-      // Garante token do player no mapa (carrega mapa fresco do Firebase primeiro)
-      const _pid = SESSION.name.replace(/\s/g, '_');
-      MBState.map.loadFromFirebase(SESSION.code, freshMap => {
-        if (freshMap) {
-          MAP_DATA = freshMap;
-          renderGrid();
-          renderTokens();
-        }
-        ensurePlayerToken(_pid);
-      });
+      const _pid = name.replace(/\s/g, '_');
+      ensurePlayerToken(_pid);
     }
+    // GM: painel esquerdo já visível por padrão (com ficha do mestre)
 
     setupFichaAutosave();
     setupColorPicker();
@@ -1382,52 +1424,8 @@ const TOKEN_COLORS = [
     panOfsX = 0; panOfsY = 0;
     applyPan();
     updateMapInfo();
-    addSysMsg('⚔ Mesa carregada. Bem-vindo, ' + (SESSION.role === 'gm' ? 'Mestre' : SESSION.name) + '!');
+    addSysMsg('⚔ Mesa carregada. Bem-vindo, ' + (role === 'gm' ? 'Mestre' : name) + '!');
   }
-})();
-
-/* ══════════════════════════════════════════════════════════════
-   FIREBASE SYNC EM TEMPO REAL
-   Recebe atualizações dos outros jogadores conectados na mesma sala
-══════════════════════════════════════════════════════════════ */
-(function setupFirebaseSync() {
-  const code = SESSION.code;
-  if (!code || code === 'LOCAL') return;
-
-  MBState.startSync(code, {
-
-    // Mapa atualizado por outro cliente (ex: GM moveu token)
-    onMapUpdate(data) {
-      MAP_DATA = { ...MAP_DATA, ...data };
-      renderTokens();
-      renderGrid();
-      document.getElementById('fog-overlay').style.display = MAP_DATA.fogActive ? 'block' : 'none';
-      document.getElementById('btn-fog').classList.toggle('on', MAP_DATA.fogActive);
-      document.getElementById('btn-grid').classList.toggle('on', MAP_DATA.showGrid);
-    },
-
-    // Nova mensagem de outro cliente no chat
-    onChatNew(entry) {
-      // Para rolagens: animação primeiro, resultado no chat após
-      if (entry.type === 'roll' && entry.ok && entry.rolls && entry.rolls.length > 0 && typeof DiceAnimator !== 'undefined') {
-        try {
-          DiceAnimator.roll(entry.rolls, entry.sides || 6, entry.author, function() { renderChatMsg(entry, true); });
-        } catch(e) {
-          console.warn('[MB] DiceAnimator erro (onChatNew):', e);
-          renderChatMsg(entry, true);
-        }
-      } else {
-        renderChatMsg(entry, true);
-      }
-    },
-
-    // Iniciativa atualizada por outro cliente
-    onInitUpdate(list) {
-      INIT_LIST = list;
-      renderInitList();
-    }
-
-  });
 })();
 
 /* ══════════════════════════════════════════════════════════════
@@ -1590,7 +1588,7 @@ function mapMouseUp(e) {
   if (isDraggingToken && dragToken) {
     const gs = MAP_DATA.gridSize || 50;
     const tid = dragToken.dataset.id;
-    const token = MAP_DATA.tokens.find(t => t.id === tid);
+    const token = (MAP_DATA.tokens || []).find(t => t.id === tid);
     if (token) {
       // Snap para grade (Math.floor = célula correta, não a adjacente)
       token.x = Math.floor(parseFloat(dragToken.style.left) / gs) * gs + gs / 2;
@@ -1598,7 +1596,7 @@ function mapMouseUp(e) {
       dragToken.style.left = token.x + 'px';
       dragToken.style.top  = token.y + 'px';
       dragToken.style.transform = 'translate(-50%,-50%) scale(1)';
-      saveMap();
+      saveToken(token); // salva só este token (posição)
     }
     isDraggingToken = false; dragToken = null;
   }
@@ -1670,9 +1668,10 @@ function confirmAddToken() {
   }
 
   const token = { id: 'tok_' + Date.now(), name, icon, color, hp, hpMax, x: px, y: py, size: gs };
+  if (!Array.isArray(MAP_DATA.tokens)) MAP_DATA.tokens = [];
   MAP_DATA.tokens.push(token);
   createTokenEl(token);
-  saveMap();
+  saveToken(token); // salva só este token (atômico)
   closeModal('modal-token');
   showToast(`✦ Token "${name}" adicionado`);
 }
@@ -1680,7 +1679,7 @@ function confirmAddToken() {
 function renderTokens() {
   const layer = document.getElementById('token-layer');
   layer.innerHTML = '';
-  MAP_DATA.tokens.forEach(t => createTokenEl(t));
+  (MAP_DATA.tokens || []).forEach(t => t && createTokenEl(t));
 }
 
 function createTokenEl(token) {
@@ -1768,11 +1767,11 @@ function deselectToken() {
 }
 
 function removeToken(id) {
-  MAP_DATA.tokens = MAP_DATA.tokens.filter(t => t.id !== id);
+  MAP_DATA.tokens = (MAP_DATA.tokens || []).filter(t => t.id !== id);
   const el = document.querySelector(`.token[data-id="${id}"]`);
   if (el) el.remove();
   if (SELECTED_TOKEN === id) SELECTED_TOKEN = null;
-  saveMap();
+  deleteToken(id);
   showToast('🗑 Token removido');
 }
 
@@ -1794,7 +1793,7 @@ function confirmEditToken() {
   token.hp    = parseInt(document.getElementById('edit-tok-hp').value) || 0;
   token.hpMax = parseInt(document.getElementById('edit-tok-hpmax').value) || token.hpMax;
   renderTokens();
-  saveMap();
+  saveToken(token);
   closeModal('modal-edit-token');
   showToast('✦ Token atualizado');
 }
@@ -1850,10 +1849,24 @@ function closeCtxMenu() {
 /* ══════════════════════════════════════════════════════════════
    SALVAMENTO
 ══════════════════════════════════════════════════════════════ */
+// Salva configurações do mapa (grade, névoa, fundo, pan) — sem tokens
 function saveMap() {
   MAP_DATA.panX = panOfsX;
   MAP_DATA.panY = panOfsY;
-  MBState.map.save(SESSION.code, MAP_DATA);
+  MBState.map.save(SESSION.code, MAP_DATA); // map.save já strip tokens internamente
+}
+
+// Salva UM token de forma atômica (não sobrescreve tokens de outros clientes)
+function saveToken(token) {
+  MBState.tokens.saveOne(SESSION.code, token);
+  // Cache local atualizado via MAP_DATA (já está lá)
+  try { localStorage.setItem('mb_map_' + SESSION.code, JSON.stringify(MAP_DATA)); } catch(e) {}
+}
+
+// Remove UM token do Firebase
+function deleteToken(tokenId) {
+  MBState.tokens.removeOne(SESSION.code, tokenId);
+  try { localStorage.setItem('mb_map_' + SESSION.code, JSON.stringify(MAP_DATA)); } catch(e) {}
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2406,6 +2419,7 @@ function addNewFicha() {
 /* Garante que o jogador tem um token no mapa. Cria se não existir.
    Se o avatar mudou, atualiza o token existente. */
 function ensurePlayerToken(pid) {
+  if (!Array.isArray(MAP_DATA.tokens)) MAP_DATA.tokens = [];
   const tokenId = 'tok_player_' + pid;
   const existing = MAP_DATA.tokens.find(t => t.id === tokenId);
 
@@ -2429,7 +2443,7 @@ function ensurePlayerToken(pid) {
       const oldEl = document.querySelector(`.token[data-id="${tokenId}"]`);
       if (oldEl) oldEl.remove();
       createTokenEl(existing);
-      saveMap();
+      saveToken(existing);
     }
     return;
   }
@@ -2454,9 +2468,10 @@ function ensurePlayerToken(pid) {
     playerId: pid
   };
 
+  if (!Array.isArray(MAP_DATA.tokens)) MAP_DATA.tokens = [];
   MAP_DATA.tokens.push(token);
   createTokenEl(token);
-  saveMap();
+  saveToken(token);
   showToast('✦ Seu token foi colocado no mapa!');
 }
 
@@ -2470,7 +2485,7 @@ function applyAvatarToPlayerToken(pid, avatarBase64) {
   const oldEl = document.querySelector(`.token[data-id="${tokenId}"]`);
   if (oldEl) oldEl.remove();
   createTokenEl(token);
-  saveMap();
+  saveToken(token);
 }
 
 /* ══════════════════════════════════════════════════════════════

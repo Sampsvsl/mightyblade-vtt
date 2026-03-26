@@ -208,15 +208,18 @@ const MBState = {
       } catch(e) { return this.default(); }
     },
 
+    // Salva APENAS as configurações do mapa (sem tokens — tokens têm path próprio)
     save(code, data) {
-      localStorage.setItem('mb_map_' + code, JSON.stringify(data));
-      if (code && code !== 'LOCAL') {
-        const r = _fbRef('mesas/' + code + '/map');
-        if (r) r.set(data).catch(e => console.warn('[MB] Firebase map sync:', e));
-      }
+      // Cache local inclui tudo (tokens também)
+      try { localStorage.setItem('mb_map_' + code, JSON.stringify(data)); } catch(e) {}
+      if (!code || code === 'LOCAL') return;
+      // Firebase: salva só configurações
+      const { tokens: _t, ...settings } = data;
+      const r = _fbRef('mesas/' + code + '/map');
+      if (r) r.set(settings).catch(e => console.warn('[MB] Firebase map sync:', e));
     },
 
-    // Carrega mapa uma vez do Firebase; fallback para null (caller usa localStorage)
+    // Carrega configurações do mapa uma vez do Firebase (sem tokens)
     loadFromFirebase(code, cb) {
       if (!code || code === 'LOCAL') { cb(null); return; }
       const r = _fbRef('mesas/' + code + '/map');
@@ -224,10 +227,7 @@ const MBState = {
       r.once('value', snap => {
         const data = snap.val();
         if (data) {
-          const merged = { ...this.default(), ...data };
-          if (merged.tokens && !Array.isArray(merged.tokens)) {
-            merged.tokens = Object.values(merged.tokens).filter(Boolean);
-          }
+          const merged = { ...this.default(), ...data, tokens: [] };
           try { localStorage.setItem('mb_map_' + code, JSON.stringify(merged)); } catch(e) {}
           cb(merged);
         } else { cb(null); }
@@ -303,11 +303,12 @@ const MBState = {
 
   /* ──────────────────── SYNC EM TEMPO REAL ──────────────────────────── */
   //
-  //  Chame este método uma vez após carregar a mesa.
+  //  Chame APÓS o Firebase Auth estar pronto (dentro de onAuthStateChanged).
   //  Parâmetros de `callbacks`:
-  //    onMapUpdate(data)   → chamado quando outro cliente atualiza o mapa
-  //    onChatNew(entry)    → chamado quando outro cliente envia mensagem
-  //    onInitUpdate(list)  → chamado quando a iniciativa muda
+  //    onMapUpdate(settings) → configurações do mapa mudaram (sem tokens)
+  //    onTokensUpdate(list)  → lista de tokens mudou (source of truth)
+  //    onChatNew(entry)      → nova mensagem de outro cliente
+  //    onInitUpdate(list)    → iniciativa mudou
   //
   startSync(code, callbacks = {}) {
     if (!code || code === 'LOCAL') return;
@@ -318,14 +319,20 @@ const MBState = {
       return;
     }
 
-    // ── Mapa ──
+    // ── Configurações do mapa (sem tokens) ──
     if (callbacks.onMapUpdate) {
       db.ref('mesas/' + code + '/map').on('value', snap => {
         const data = snap.val();
-        if (data) {
-          localStorage.setItem('mb_map_' + code, JSON.stringify(data));
-          callbacks.onMapUpdate(data);
-        }
+        if (data) callbacks.onMapUpdate(data);
+      });
+    }
+
+    // ── Tokens (path separado — evita overwrites de clientes concorrentes) ──
+    if (callbacks.onTokensUpdate) {
+      db.ref('mesas/' + code + '/tokens').on('value', snap => {
+        const data = snap.val();
+        const list = MBState.tokens._toArray(data);
+        callbacks.onTokensUpdate(list);
       });
     }
 
@@ -389,6 +396,49 @@ const MBState = {
     }
 
     console.log('[MB] Sync em tempo real ativo para sala:', code);
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   TOKENS — Path separado: mesas/{code}/tokens/{tokenId}
+   Cada token tem seu próprio node → sem overwrite concorrente
+═══════════════════════════════════════════════════════════════ */
+MBState.tokens = {
+
+  _toArray(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data.filter(Boolean);
+    return Object.values(data).filter(Boolean);
+  },
+
+  _toHash(arr) {
+    const h = {};
+    (arr || []).forEach(t => { if (t && t.id) h[t.id] = t; });
+    return h;
+  },
+
+  // Salva UM token (operação atômica — não sobrescreve outros)
+  saveOne(code, token) {
+    if (!code || code === 'LOCAL' || !token || !token.id) return;
+    const r = _fbRef('mesas/' + code + '/tokens/' + token.id);
+    if (r) r.set(token).catch(e => console.warn('[MB] tokens.saveOne:', e));
+  },
+
+  // Remove UM token
+  removeOne(code, tokenId) {
+    if (!code || code === 'LOCAL' || !tokenId) return;
+    const r = _fbRef('mesas/' + code + '/tokens/' + tokenId);
+    if (r) r.remove().catch(e => console.warn('[MB] tokens.removeOne:', e));
+  },
+
+  // Carrega todos os tokens uma vez do Firebase
+  loadFromFirebase(code, cb) {
+    if (!code || code === 'LOCAL') { cb([]); return; }
+    const r = _fbRef('mesas/' + code + '/tokens');
+    if (!r) { cb([]); return; }
+    r.once('value', snap => {
+      cb(this._toArray(snap.val()));
+    }).catch(() => cb([]));
   }
 };
 
